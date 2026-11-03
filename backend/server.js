@@ -1,6 +1,7 @@
 'use strict';
 const http = require('node:http');
 const Stripe = require('stripe');
+const { loadRelease, manifest } = require('./update-feed');
 
 const MAX_BODY = 65536;
 function json(res, status, data) {
@@ -47,6 +48,17 @@ function createHandler({ env = process.env, stripeFactory = (key) => new Stripe(
     try {
       const path = new URL(req.url, 'http://local').pathname;
       if (req.method === 'GET' && path === '/health') return json(res, 200, { status: 'ok', payments: 'sandbox_only', entitlements: 'disabled' });
+      if (req.method === 'GET' && path === '/updates.json') {
+        const release = loadRelease(env);
+        return release ? json(res, 200, manifest(release)) : json(res, 503, { error: 'updates_not_configured' });
+      }
+      if (req.method === 'GET' && /^\/downloads\/[0-9]{1,10}-(android\.apk|windows\.zip)$/.test(path)) {
+        const release = loadRelease(env);
+        const match = /^\/downloads\/([0-9]+)-(android|windows)\.(apk|zip)$/.exec(path);
+        if (!release || !match || Number(match[1]) !== release.code || (match[2] === 'android' ? match[3] !== 'apk' : match[3] !== 'zip')) return json(res, 404, { error: 'release_not_found' });
+        res.writeHead(302, { Location: release.artifacts[match[2]].url, 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' });
+        return res.end();
+      }
       if (req.method === 'POST' && path === '/webhooks/stripe') {
         const body = await readBody(req);
         const sig = req.headers['stripe-signature'];
