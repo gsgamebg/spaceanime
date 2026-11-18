@@ -2,7 +2,9 @@ package app.anim.ads
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 class AdsConfigTest {
     @Test fun validPublicFlagsAreParsed() {
@@ -25,5 +27,12 @@ class AdsConfigTest {
         )
 
         invalid.forEach { assertNull(parseAdsConfiguration(it)) }
+    }
+
+    @Test fun adsRequireFreshConsentAndCompletedPrivacyForm() {
+        assertTrue(adsMayBeRequested(consentRefreshSucceeded = true, formCompleted = true, canRequestAds = true))
+        assertFalse(adsMayBeRequested(consentRefreshSucceeded = false, formCompleted = true, canRequestAds = true))
+        assertFalse(adsMayBeRequested(consentRefreshSucceeded = true, formCompleted = false, canRequestAds = true))
+        assertFalse(adsMayBeRequested(consentRefreshSucceeded = true, formCompleted = true, canRequestAds = false))
     }
 }

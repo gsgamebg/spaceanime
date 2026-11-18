@@ -6,6 +6,7 @@
     <uses-feature android:name="android.software.leanback" android:required="false" />
     <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
     <application android:label="SpaceAnime" android:icon="@drawable/spaceanime_brand" android:banner="@drawable/spaceanime_tv_banner" android:usesCleartextTraffic="false" android:allowBackup="false" android:theme="@style/SpaceAnimeTheme" android:supportsRtl="true">
+        <meta-data android:name="com.google.android.gms.ads.APPLICATION_ID" android:value="${ADMOB_APP_ID}" />
         <meta-data android:name="firebase_messaging_auto_init_enabled" android:value="false" />
         <service android:name=".notifications.SpaceFirebaseMessagingService" android:exported="false">
             <intent-filter>

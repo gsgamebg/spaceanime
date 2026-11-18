@@ -11,6 +11,8 @@ jsoup = "1.21.2"
 json = "1.9.0"
 google-services = "4.6.0"
 firebase-bom = "35.2.0"
+google-mobile-ads = "25.5.0"
+google-ump = "4.0.0"
 
 [libraries]
 androidx-activity-compose = { module = "androidx.activity:activity-compose", version.ref = "activity" }
@@ -26,6 +28,8 @@ jsoup = { module = "org.jsoup:jsoup", version.ref = "jsoup" }
 json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "json" }
 firebase-bom = { module = "com.google.firebase:firebase-bom", version.ref = "firebase-bom" }
 firebase-messaging = { module = "com.google.firebase:firebase-messaging" }
+google-mobile-ads = { module = "com.google.android.gms:play-services-ads", version.ref = "google-mobile-ads" }
+google-ump = { module = "com.google.android.ump:user-messaging-platform", version.ref = "google-ump" }
 
 [plugins]
 kotlin-multiplatform = { id = "org.jetbrains.kotlin.multiplatform", version.ref = "kotlin" }

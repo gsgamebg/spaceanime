@@ -7,10 +7,17 @@ val releaseSigningVariables = listOf(
     "SPACEANIME_KEY_ALIAS",
     "SPACEANIME_KEY_PASSWORD",
 )
-val releaseVersion = System.getenv("RELEASE_VERSION") ?: "0.7.19"
+val admobReleaseAppId = System.getenv("ADMOB_APP_ID").orEmpty()
+val admobReleaseHomeBannerId = System.getenv("ADMOB_HOME_BANNER_ID").orEmpty()
+val admobReleaseCatalogBannerId = System.getenv("ADMOB_CATALOG_BANNER_ID").orEmpty()
+val admobAppIdPattern = Regex("""ca-app-pub-\d{16}~\d{10}""")
+val admobBannerIdPattern = Regex("""ca-app-pub-\d{16}/\d{10}""")
+val admobTestAppId = "ca-app-pub-3940256099942544~3347511713"
+val admobTestBannerId = "ca-app-pub-3940256099942544/9214589741"
+val releaseVersion = System.getenv("RELEASE_VERSION") ?: "0.7.21"
 val releaseCode = System.getenv("RELEASE_CODE")?.let { raw ->
     raw.toIntOrNull() ?: error("RELEASE_CODE must be a positive integer.")
-} ?: 35
+} ?: 37
 require(releaseCode > 0) { "RELEASE_CODE must be a positive integer." }
 require(Regex("[0-9]+\\.[0-9]+\\.[0-9]+").matches(releaseVersion)) {
     "RELEASE_VERSION must use the format major.minor.patch."
@@ -60,6 +67,8 @@ kotlin {
         getByName("desktopMain").dependsOn(jvmSharedMain)
         androidMain.dependencies {
             implementation(libs.androidx.activity.compose)
+            implementation(libs.google.mobile.ads)
+            implementation(libs.google.ump)
             implementation(libs.firebase.messaging)
             implementation(libs.media3.exoplayer)
             implementation(libs.media3.hls)
@@ -96,6 +105,24 @@ val verifyReleaseSigning = tasks.register("verifyReleaseSigning") {
     }
 }
 
+val verifyAdMobReleaseConfig = tasks.register("verifyAdMobReleaseConfig") {
+    doLast {
+        check(admobAppIdPattern.matches(admobReleaseAppId)) {
+            "Set ADMOB_APP_ID to a valid AdMob app ID before building Android release."
+        }
+        check(admobBannerIdPattern.matches(admobReleaseHomeBannerId)) {
+            "Set ADMOB_HOME_BANNER_ID to a valid AdMob banner unit ID before building Android release."
+        }
+        check(admobBannerIdPattern.matches(admobReleaseCatalogBannerId)) {
+            "Set ADMOB_CATALOG_BANNER_ID to a valid AdMob banner unit ID before building Android release."
+        }
+    }
+}
+
+tasks.matching { it.name == "preReleaseBuild" }.configureEach {
+    dependsOn(verifyAdMobReleaseConfig)
+}
+
 tasks.matching { it.name == "validateSigningRelease" }.configureEach {
     dependsOn(verifyReleaseSigning)
 }
@@ -124,8 +151,16 @@ android {
         }
     }
     buildTypes {
+        getByName("debug") {
+            manifestPlaceholders["ADMOB_APP_ID"] = admobTestAppId
+            resValue("string", "admob_home_banner_id", admobTestBannerId)
+            resValue("string", "admob_catalog_banner_id", admobTestBannerId)
+        }
         getByName("release") {
             signingConfig = signingConfigs.getByName("release")
+            manifestPlaceholders["ADMOB_APP_ID"] = admobReleaseAppId
+            resValue("string", "admob_home_banner_id", admobReleaseHomeBannerId)
+            resValue("string", "admob_catalog_banner_id", admobReleaseCatalogBannerId)
         }
     }
     compileOptions {

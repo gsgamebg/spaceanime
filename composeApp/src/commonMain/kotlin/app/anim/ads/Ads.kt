@@ -16,5 +16,11 @@ data class AdsConfiguration(
         }
 }
 
+internal fun adsMayBeRequested(
+    consentRefreshSucceeded: Boolean,
+    formCompleted: Boolean,
+    canRequestAds: Boolean,
+): Boolean = consentRefreshSucceeded && formCompleted && canRequestAds
+
 @Composable
 expect fun AdBannerSlot(placement: AdPlacement)
