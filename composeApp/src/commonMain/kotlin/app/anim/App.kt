@@ -50,9 +50,11 @@ import app.anim.sources.SourcesScreen
 import app.anim.sources.createSourceRepository
 import app.anim.update.AppRelease
 import app.anim.update.MandatoryUpdateScreen
+import app.anim.update.APP_VERSION_CODE
 import app.anim.update.UPDATE_MANIFEST_URL
 import app.anim.update.UpdateCard
 import app.anim.update.createUpdateClient
+import app.anim.update.rememberRequiredReleaseStore
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -77,24 +79,50 @@ fun App(onFullScreenChange: (Boolean) -> Unit = {}) {
     val profileState by profiles.state.collectAsState()
     val repository = remember { createSourceRepository() }
     val updater = remember { createUpdateClient() }
+    val requiredReleaseStore = rememberRequiredReleaseStore()
     val scope = rememberCoroutineScope()
     var release by remember { mutableStateOf<AppRelease?>(null) }
     var checking by remember { mutableStateOf(false) }
-    var initialUpdateCheck by remember { mutableStateOf(UPDATE_MANIFEST_URL.isNotBlank()) }
+    var requiredReleaseStoreReady by remember { mutableStateOf(false) }
+    var initialUpdateCheck by remember { mutableStateOf(true) }
     var updateMessage by remember { mutableStateOf<String?>(null) }
+    var updateStorageError by remember { mutableStateOf<String?>(null) }
 
     fun checkUpdates() {
-        if (checking) return
+        if (checking || !requiredReleaseStoreReady || (updateStorageError != null && release == null)) return
         checking = true
         scope.launch {
             try {
-                val checked = updater.check()
-                release = app.anim.update.retainHighestRelease(release, checked)
-                updateMessage = if (release == null) "Você está na versão mais recente." else null
+                val checked = try {
+                    updater.check()
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (_: Exception) {
+                    updateMessage = "Não foi possível consultar atualizações."
+                    return@launch
+                }
+                val nextRequirement = app.anim.update.updateRequirementAfterCheck(
+                    APP_VERSION_CODE,
+                    release,
+                    checked,
+                )
+                release = nextRequirement
+                try {
+                    if (nextRequirement == null) requiredReleaseStore.clear()
+                    else requiredReleaseStore.save(nextRequirement)
+                    updateStorageError = null
+                    updateMessage = if (nextRequirement == null) "Você está na versão mais recente." else null
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (_: Exception) {
+                    updateStorageError = if (nextRequirement != null) {
+                        "A atualização obrigatória foi detectada, mas não foi possível salvar a exigência neste dispositivo. O bloqueio continuará ativo nesta sessão."
+                    } else {
+                        "Não foi possível atualizar o armazenamento local das atualizações."
+                    }
+                }
             } catch (cancelled: CancellationException) {
                 throw cancelled
-            } catch (_: Exception) {
-                updateMessage = "Não foi possível consultar atualizações."
             } finally {
                 checking = false
                 initialUpdateCheck = false
@@ -102,8 +130,48 @@ fun App(onFullScreenChange: (Boolean) -> Unit = {}) {
         }
     }
 
-    LaunchedEffect(Unit) {
-        if (UPDATE_MANIFEST_URL.isNotBlank()) while (true) { checkUpdates(); delay(6 * 60 * 60 * 1000L) }
+    LaunchedEffect(requiredReleaseStore) {
+        try {
+            val stored = requiredReleaseStore.load()
+            val cachedRequirement = app.anim.update.requiredReleaseForStartup(APP_VERSION_CODE, stored)
+            release = cachedRequirement
+            if (stored != null && cachedRequirement == null) requiredReleaseStore.clear()
+            requiredReleaseStoreReady = true
+            if (UPDATE_MANIFEST_URL.isBlank()) initialUpdateCheck = false
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            updateStorageError = "Não foi possível ler a exigência de atualização salva neste dispositivo. O app permanecerá bloqueado até o armazenamento ser verificado."
+            requiredReleaseStoreReady = true
+            initialUpdateCheck = false
+        }
+    }
+
+    fun retryRequiredReleaseStore() {
+        if (checking) return
+        scope.launch {
+            try {
+                val stored = requiredReleaseStore.load()
+                val cachedRequirement = app.anim.update.requiredReleaseForStartup(APP_VERSION_CODE, stored)
+                if (stored != null && cachedRequirement == null) requiredReleaseStore.clear()
+                release = cachedRequirement
+                updateStorageError = null
+                initialUpdateCheck = UPDATE_MANIFEST_URL.isNotBlank()
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                updateStorageError = "Não foi possível ler ou limpar a exigência de atualização salva. Tente novamente."
+            }
+        }
+    }
+
+    LaunchedEffect(requiredReleaseStoreReady, updateStorageError) {
+        if (!requiredReleaseStoreReady || updateStorageError != null || UPDATE_MANIFEST_URL.isBlank()) return@LaunchedEffect
+        checkUpdates()
+        while (true) {
+            delay(6 * 60 * 60 * 1000L)
+            checkUpdates()
+        }
     }
 
     MaterialTheme(
@@ -126,9 +194,25 @@ fun App(onFullScreenChange: (Boolean) -> Unit = {}) {
             MandatoryUpdateScreen(
                 release = release!!,
                 checking = checking,
-                message = updateMessage,
+                message = updateStorageError ?: updateMessage,
                 onCheck = ::checkUpdates
             )
+        } else if (updateStorageError != null) {
+            Surface(Modifier.fillMaxSize(), color = SpaceColors.background, contentColor = SpaceColors.onSurface) {
+                Column(
+                    Modifier.fillMaxSize().safeDrawingPadding().padding(24.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center,
+                ) {
+                    Text("Não foi possível verificar as atualizações salvas.", style = MaterialTheme.typography.titleLarge)
+                    Spacer(Modifier.height(12.dp))
+                    Text(updateStorageError!!, color = SpaceColors.error)
+                    Spacer(Modifier.height(18.dp))
+                    Button(onClick = ::retryRequiredReleaseStore, enabled = !checking) {
+                        Text(if (checking) "Verificando…" else "Tentar novamente")
+                    }
+                }
+            }
         } else if (!accountState.isAuthenticated) {
             Surface(Modifier.fillMaxSize(), color = SpaceColors.background) {
                 Column(Modifier.fillMaxSize().safeDrawingPadding().verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.Center) {

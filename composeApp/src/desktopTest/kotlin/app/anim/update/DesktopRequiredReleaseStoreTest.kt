@@ -44,6 +44,19 @@ class DesktopRequiredReleaseStoreTest {
         assertNull(store.load())
     }
 
+    @Test fun installedVersionCanReadAndClearItsNowStaleRequirement() = runBlocking {
+        val file = File(root(), "required-release.json").apply {
+            writeText(
+                """{"schemaVersion":1,"release":{"version":"0.8.0","code":$APP_VERSION_CODE,"url":"https://spaceanime.onrender.com/downloads/space.apk","sha256":"${"a".repeat(64)}","notes":"old requirement"}}""",
+            )
+        }
+        val store = DesktopRequiredReleaseStore(file)
+
+        assertEquals(APP_VERSION_CODE, store.load()?.code)
+        store.clear()
+        assertNull(store.load())
+    }
+
     @Test fun saveFailureIsReported() = runBlocking {
         val parentFile = File(root(), "not-a-directory").apply { writeText("block") }
         val store = DesktopRequiredReleaseStore(File(parentFile, "required-release.json"))

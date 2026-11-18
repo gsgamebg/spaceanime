@@ -2,10 +2,10 @@ package app.anim.update
 
 import androidx.compose.runtime.Composable
 
-internal fun AppRelease.isValidForPersistence(): Boolean {
+internal fun AppRelease.isValidStoredRelease(): Boolean {
     val manifestHost = UPDATE_MANIFEST_URL.removePrefix("https://").substringBefore('/')
     val downloadPrefix = "https://$manifestHost/"
-    return code > APP_VERSION_CODE &&
+    return code > 0 &&
         Regex("[0-9]+\\.[0-9]+\\.[0-9]+").matches(version) &&
         version.length <= 32 &&
         url.length in 1..2048 &&
@@ -16,6 +16,9 @@ internal fun AppRelease.isValidForPersistence(): Boolean {
         Regex("[a-fA-F0-9]{64}").matches(sha256) &&
         notes.length <= 4000
 }
+
+internal fun AppRelease.isValidForPersistence(): Boolean =
+    code > APP_VERSION_CODE && isValidStoredRelease()
 
 @Composable
 expect fun rememberRequiredReleaseStore(): RequiredReleaseStore

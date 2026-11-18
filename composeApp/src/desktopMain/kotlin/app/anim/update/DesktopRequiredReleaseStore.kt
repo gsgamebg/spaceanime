@@ -90,7 +90,7 @@ internal class DesktopRequiredReleaseStore(private val file: File) : RequiredRel
             sha256 = stored.getValue("sha256").jsonPrimitive.content,
             notes = stored.getValue("notes").jsonPrimitive.content,
         )
-        require(release.isValidForPersistence())
+        require(release.isValidStoredRelease())
         return release
     }
 }

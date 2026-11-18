@@ -24,7 +24,7 @@ internal class AndroidRequiredReleaseStore(context: Context) : RequiredReleaseSt
             sha256 = preferences.getString(KEY_SHA256, null) ?: throw IOException("Stored release hash is missing."),
             notes = preferences.getString(KEY_NOTES, null) ?: throw IOException("Stored release notes are missing."),
         )
-        if (!release.isValidForPersistence()) {
+        if (!release.isValidStoredRelease()) {
             throw IOException("Stored required release is invalid.")
         }
         release
