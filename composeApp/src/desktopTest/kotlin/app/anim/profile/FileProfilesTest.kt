@@ -8,6 +8,32 @@ import kotlinx.coroutines.runBlocking
 import kotlin.test.*
 
 class FileProfilesTest {
+    @Test fun autoPlayNextDefaultsForLegacyProfilesAndPersistsWithoutChangingOtherFields() = runBlocking {
+        listOf(
+            """{"version":1,"profiles":[{"id":"default","name":"Gabriel","color":0}],"activeId":"default"}""",
+            """{"version":2,"profiles":[{"id":"default","name":"Gabriel","color":0,"username":"gabi.space","bio":"Animes","reduceMotion":false}],"activeId":"default"}""",
+        ).forEachIndexed { index, json ->
+            val file = File(root(), "profiles.json").apply { writeText(json) }
+            val store = FileProfiles(file)
+            assertFalse(store.state.value.active.autoPlayNext)
+            if (index == 1) {
+                assertEquals("gabi.space", store.state.value.active.username)
+                assertEquals("Animes", store.state.value.active.bio)
+                assertFalse(store.state.value.active.reduceMotion)
+            }
+
+            store.setAutoPlayNext(true)
+
+            val restored = FileProfiles(file).state.value.active
+            assertTrue(restored.autoPlayNext)
+            if (index == 1) {
+                assertEquals("gabi.space", restored.username)
+                assertEquals("Animes", restored.bio)
+                assertFalse(restored.reduceMotion)
+            }
+        }
+    }
+
     @Test fun olderProfilesMigrateAndMotionPreferencePersists() = runBlocking {
         val file = File(root(), "profiles.json")
         file.writeText("""{"version":1,"profiles":[{"id":"default","name":"Gabriel","color":0}],"activeId":"default"}""")

@@ -10,6 +10,7 @@ data class LocalProfile(
     val username: String = defaultProfileUsername(name),
     val bio: String = "",
     val reduceMotion: Boolean = true,
+    val autoPlayNext: Boolean = false,
 )
 
 data class ProfileState(
@@ -30,6 +31,7 @@ interface Profiles {
     )
     suspend fun select(id: String)
     suspend fun setReducedMotion(value: Boolean)
+    suspend fun setAutoPlayNext(value: Boolean)
     suspend fun rename(
         name: String,
         color: Int,

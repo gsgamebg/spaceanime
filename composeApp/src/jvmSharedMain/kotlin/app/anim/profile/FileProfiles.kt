@@ -24,7 +24,7 @@ class FileProfiles(private val file: File) : Profiles {
             require(file.length() <= 16384)
             val root = Json.parseToJsonElement(file.readText()).jsonObject
             val version = root.getValue("version").jsonPrimitive.int
-            require(version in 1..2)
+            require(version in 1..3)
             val list = root.getValue("profiles").jsonArray.map {
                 val p = it.jsonObject
                 val name = p.getValue("name").jsonPrimitive.content
@@ -35,6 +35,7 @@ class FileProfiles(private val file: File) : Profiles {
                     username = p["username"]?.jsonPrimitive?.content?.takeIf { version >= 2 } ?: defaultProfileUsername(name),
                     bio = p["bio"]?.jsonPrimitive?.content?.takeIf { version >= 2 }.orEmpty(),
                     reduceMotion = p["reduceMotion"]?.jsonPrimitive?.boolean ?: true,
+                    autoPlayNext = p["autoPlayNext"]?.jsonPrimitive?.boolean ?: false,
                 )
             }
             require(list.size in 1..6 && list.map { it.id }.distinct().size == list.size)
@@ -62,7 +63,7 @@ class FileProfiles(private val file: File) : Profiles {
             try {
                 val next = transform(mutable.value).copy(error = null)
                 val text = buildJsonObject {
-                    put("version", 2)
+                    put("version", 3)
                     put("activeId", next.activeId)
                     put("profiles", JsonArray(next.profiles.map { p ->
                         buildJsonObject {
@@ -72,6 +73,7 @@ class FileProfiles(private val file: File) : Profiles {
                             put("username", p.username)
                             put("bio", p.bio)
                             put("reduceMotion", p.reduceMotion)
+                            put("autoPlayNext", p.autoPlayNext)
                         }
                     }))
                 }.toString()
@@ -102,6 +104,9 @@ class FileProfiles(private val file: File) : Profiles {
     }
     override suspend fun setReducedMotion(value: Boolean) = change { state ->
         state.copy(profiles = state.profiles.map { if (it.id == state.activeId) it.copy(reduceMotion = value) else it })
+    }
+    override suspend fun setAutoPlayNext(value: Boolean) = change { state ->
+        state.copy(profiles = state.profiles.map { if (it.id == state.activeId) it.copy(autoPlayNext = value) else it })
     }
     override suspend fun rename(name: String, color: Int, username: String, bio: String) = change {
         val cleaned = sanitizeProfileName(name)

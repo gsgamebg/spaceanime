@@ -196,6 +196,23 @@ enum class ProfileTab { History, Favorites, Lists, Plans, Settings }
                         }
                         Switch(state.active.reduceMotion, enabled = !busy, onCheckedChange = { value -> busy = true; scope.launch { try { profiles.setReducedMotion(value) } finally { busy = false } } })
                     }
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text("Reproduzir próximo episódio automaticamente", color = Color.White, fontWeight = FontWeight.Medium)
+                            Text("Desativado por padrão. Avança apenas quando há próximo episódio na fila.", style = MaterialTheme.typography.bodySmall, color = SpaceColors.onSurfaceVariant)
+                        }
+                        Switch(
+                            checked = state.active.autoPlayNext,
+                            enabled = !busy,
+                            onCheckedChange = { value ->
+                                busy = true
+                                scope.launch {
+                                    try { profiles.setAutoPlayNext(value) }
+                                    finally { busy = false }
+                                }
+                            },
+                        )
+                    }
                 }
             }
         }
