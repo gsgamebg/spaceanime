@@ -7,6 +7,13 @@ import kotlin.test.assertTrue
 import kotlin.test.assertFailsWith
 
 class PlayerInteractionsTest {
+    @Test fun autoAdvanceRequiresPreferenceEndedStateAndNextEpisode() {
+        assertTrue(shouldAutoAdvance(autoPlayNext = true, ended = true, hasNext = true))
+        assertFalse(shouldAutoAdvance(autoPlayNext = false, ended = true, hasNext = true))
+        assertFalse(shouldAutoAdvance(autoPlayNext = true, ended = false, hasNext = true))
+        assertFalse(shouldAutoAdvance(autoPlayNext = true, ended = true, hasNext = false))
+    }
+
     @Test fun markersOnlyApplyInsideRealSeekableDuration() {
         val intro = Segment(75_000, 165_000)
         assertFalse(intro.contains(74_999, 300_000))
