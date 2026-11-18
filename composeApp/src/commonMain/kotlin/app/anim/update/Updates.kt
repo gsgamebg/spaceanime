@@ -15,6 +15,19 @@ fun retainHighestRelease(current: AppRelease?, checked: AppRelease?): AppRelease
     else -> current
 }
 
+fun requiredReleaseForStartup(installedCode: Int, stored: AppRelease?): AppRelease? =
+    stored?.takeIf { it.code > installedCode }
+
+fun updateRequirementAfterCheck(
+    installedCode: Int,
+    stored: AppRelease?,
+    checked: AppRelease?,
+): AppRelease? =
+    retainHighestRelease(
+        requiredReleaseForStartup(installedCode, stored),
+        checked?.takeIf { it.code > installedCode },
+    )
+
 
 
 

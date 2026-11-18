@@ -27,4 +27,25 @@ class UpdatesTest {
         assertEquals(required.copy(code = required.code + 1), retainHighestRelease(required, required.copy(code = required.code + 1)))
         assertEquals(required, retainHighestRelease(null, required))
     }
+
+    @Test fun startupGateUsesOnlyAStoredHigherBuild() {
+        val required = AppRelease("0.9.0", APP_VERSION_CODE + 1, "https://spaceanime.onrender.com/app.apk", "a".repeat(64), "")
+
+        assertNull(requiredReleaseForStartup(APP_VERSION_CODE, null))
+        assertNull(requiredReleaseForStartup(APP_VERSION_CODE, required.copy(code = APP_VERSION_CODE)))
+        assertNull(requiredReleaseForStartup(APP_VERSION_CODE, required.copy(code = APP_VERSION_CODE - 1)))
+        assertEquals(required, requiredReleaseForStartup(APP_VERSION_CODE, required))
+    }
+
+    @Test fun newRequirementsNeverRegress() {
+        val required = AppRelease("0.9.0", APP_VERSION_CODE + 3, "https://spaceanime.onrender.com/app.apk", "a".repeat(64), "")
+        val lower = required.copy(version = "0.8.0", code = APP_VERSION_CODE + 1)
+
+        assertEquals(required, updateRequirementAfterCheck(APP_VERSION_CODE, required, null))
+        assertEquals(required, updateRequirementAfterCheck(APP_VERSION_CODE, required, lower))
+        assertEquals(required, updateRequirementAfterCheck(APP_VERSION_CODE, required, required.copy(code = required.code)))
+        assertEquals(required.copy(code = required.code + 1), updateRequirementAfterCheck(APP_VERSION_CODE, required, required.copy(code = required.code + 1)))
+        assertNull(updateRequirementAfterCheck(APP_VERSION_CODE, required.copy(code = APP_VERSION_CODE), null))
+        assertEquals(lower, updateRequirementAfterCheck(APP_VERSION_CODE, required.copy(code = APP_VERSION_CODE), lower))
+    }
 }
