@@ -9,6 +9,9 @@ test('only approved artifact paths and formats are accepted', () => {
  assert.equal(loadRelease({SPACEANIME_RELEASE_JSON:JSON.stringify(release)}).code,36);
  for (const url of ['http://github.com/gsgamebg/spaceanime-releases/releases/download/v1/app.apk','https://evil.test/app.apk','https://github.com/other/spaceanime-releases/releases/download/v1/app.apk','https://github.com/gsgamebg/spaceanime-releases/releases/download/v1/app.exe','https://github.com/gsgamebg/spaceanime-releases/releases/download/v1/app.apk?token=x']) assert.equal(safeArtifact(url,'android'),null);
  assert.equal(loadRelease({SPACEANIME_RELEASE_JSON:JSON.stringify({...release,android:{...release.android,sha256:'wrong'}})}),null);
+ assert.equal(loadRelease({SPACEANIME_RELEASE_JSON:JSON.stringify({...release,android:undefined})}),null);
+ assert.equal(loadRelease({SPACEANIME_RELEASE_JSON:JSON.stringify({...release,windows:undefined})}),null);
+ assert.equal(loadRelease({SPACEANIME_RELEASE_JSON:JSON.stringify({...release,windows:{...release.windows,sha256:'wrong'}})}),null);
  assert.equal(loadRelease({}),null);
 });
 test('feed and redirects are versioned and unavailable without complete configuration', async () => {
