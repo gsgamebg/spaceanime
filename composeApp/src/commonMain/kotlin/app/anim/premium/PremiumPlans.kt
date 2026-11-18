@@ -13,11 +13,11 @@ import androidx.compose.ui.unit.dp
 import app.anim.design.SpaceBorderColor
 import app.anim.design.SpaceColors
 
-private data class Plan(val name: String, val monthly: String, val annual: String, val benefits: List<String>)
-private val plans = listOf(
-    Plan("Basic", "12,99", "128,00", listOf("Sem anúncios", "Acesso privilegiado no Discord", "Descontos")),
-    Plan("Platina", "16,89", "142,00", listOf("Suporte 24 horas", "Sem anúncios", "Privilégios no Discord", "Avatares e banners exclusivos", "XP multiplicado por 3,3")),
-    Plan("Premium", "24,99", "234,00", listOf("Suporte 24 horas", "Privilégios no Discord", "Acesso antecipado a versões", "Sem anúncios", "Avatares e banners exclusivos", "XP multiplicado por 4,4", "Prioridade em tickets e sugestões", "Nome no mural de contribuidores", "Cupons de desconto")),
+internal data class Plan(val name: String, val monthly: String, val annual: String, val benefits: List<String>)
+internal val plans = listOf(
+    Plan("Basic", "12,99", "128,00", listOf("Acesso privilegiado no Discord", "Descontos")),
+    Plan("Platina", "16,89", "142,00", listOf("Suporte 24 horas", "Privilégios no Discord", "Avatares e banners exclusivos", "XP multiplicado por 3,3")),
+    Plan("Premium", "24,99", "234,00", listOf("Suporte 24 horas", "Privilégios no Discord", "Acesso antecipado a versões", "Avatares e banners exclusivos", "XP multiplicado por 4,4", "Prioridade em tickets e sugestões", "Nome no mural de contribuidores", "Cupons de desconto")),
 )
 @Composable fun PremiumPlans() {
     var annual by remember { mutableStateOf(false) }
