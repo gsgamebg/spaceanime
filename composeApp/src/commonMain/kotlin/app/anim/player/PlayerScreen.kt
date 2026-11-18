@@ -27,6 +27,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.anim.design.SpaceColors
 import app.anim.sources.Episode
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withTimeoutOrNull
@@ -78,8 +79,38 @@ fun PlayerScreen(
     queue: EpisodeQueue? = null,
     navigationLoading: Boolean = false,
     navigationError: String? = null,
+    autoPlayNext: Boolean = false,
     onEpisodeChange: (Episode) -> Unit = {},
+    onHome: () -> Unit = onBack,
 ) {
+    val markerKey = source.context?.let {
+        EpisodeMarkerKey(it.anime.sourceId, it.anime.id, it.episode.id)
+    }
+    val markersClient = remember { createEpisodeMarkersClient() }
+    var remoteMarkers by remember(markerKey) { mutableStateOf<EpisodeMarkers?>(null) }
+    var markerLoadError by remember(markerKey) { mutableStateOf<String?>(null) }
+    val latestMarkerKey by rememberUpdatedState(markerKey)
+    LaunchedEffect(markerKey, markersClient) {
+        val requestedKey = markerKey ?: return@LaunchedEffect
+        try {
+            val result = markersClient.load(requestedKey)
+            val currentKey = latestMarkerKey
+            if (currentKey != null && shouldApplyEpisodeMarkerResult(requestedKey, currentKey)) {
+                remoteMarkers = result
+            }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: EpisodeMarkersLoadException) {
+            val currentKey = latestMarkerKey
+            if (currentKey != null && shouldApplyEpisodeMarkerResult(requestedKey, currentKey)) {
+                markerLoadError = "Não foi possível carregar as marcações de abertura e encerramento."
+            }
+        }
+    }
+    val episodeMarkers = EpisodeMarkers(
+        intro = source.markers.intro ?: remoteMarkers?.intro,
+        outro = source.markers.outro ?: remoteMarkers?.outro,
+    )
     val notifier = rememberPlaybackNotifier()
     var notified by remember(source) { mutableStateOf(false) }
     var attempt by remember(source) { mutableIntStateOf(0) }
@@ -100,6 +131,20 @@ fun PlayerScreen(
         val latestState by rememberUpdatedState(state.copy(positionReady = resumeReady))
         val latestProgress by rememberUpdatedState(onProgress)
         var controlsVisible by remember { mutableStateOf(true) }
+        val nextEpisode = queue?.next()
+        var autoAdvanceTriggered by remember(queue?.currentEpisodeId) { mutableStateOf(false) }
+        val latestEpisodeChange by rememberUpdatedState(onEpisodeChange)
+
+        LaunchedEffect(state.ended, autoPlayNext, nextEpisode?.id, navigationLoading) {
+            if (
+                shouldAutoAdvance(autoPlayNext, state.ended, nextEpisode != null) &&
+                !navigationLoading &&
+                !autoAdvanceTriggered
+            ) {
+                autoAdvanceTriggered = true
+                nextEpisode?.let(latestEpisodeChange)
+            }
+        }
 
         LaunchedEffect(state.positionMs, state.durationMs, state.playing) {
             if (!notified && state.playing && source.context != null && shouldNotifyNearEnd(state.positionMs, state.durationMs)) {
@@ -160,7 +205,7 @@ fun PlayerScreen(
                 PlayerKey.Mute -> mute()
                 PlayerKey.Fullscreen -> fullscreen()
                 PlayerKey.Subtitles -> subtitles()
-                PlayerKey.SkipIntro -> skip(source.markers.intro)
+                PlayerKey.SkipIntro -> skip(episodeMarkers.intro)
                 PlayerKey.Escape -> { if (openMenu != null) openMenu = null else if (fullScreen) fullscreen(); reveal() }
             }
         }
@@ -205,6 +250,10 @@ fun PlayerScreen(
                 if (controlsVisible || !state.playing || state.error != null) Surface(color = Color(0xF00D0919), contentColor = SpaceColors.onSurface) {
                     Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                         TextButton(onClick = onBack) { SpaceIcon("chevron-left", null); Text("Voltar") }
+                        TextButton(onClick = onHome, modifier = Modifier.heightIn(min = 48.dp)) {
+                            SpaceIcon("home", "Início")
+                            Text("Início")
+                        }
                         Text(source.title, Modifier.weight(1f).padding(horizontal = 8.dp), style = MaterialTheme.typography.titleMedium, maxLines = 1)
                         IconButton(onClick = ::fullscreen) { SpaceIcon(if (fullScreen) "minimize" else "maximize", if (fullScreen) "Sair da tela cheia" else "Tela cheia", tint = Color.White) }
                     }
@@ -220,18 +269,19 @@ fun PlayerScreen(
                 }
                 if (showLoading && state.error == null) PlayerLoading(if (slowLoading) "O vídeo está demorando para carregar..." else if (state.positionMs == 0L) "Preparando seu episódio..." else "Carregando vídeo...", Modifier.fillMaxWidth().height(145.dp).background(Color(0xFF080611)))
                 feedback?.let { Text(it, Modifier.fillMaxWidth().padding(4.dp), textAlign = androidx.compose.ui.text.style.TextAlign.Center, color = SpaceColors.secondary) }
-                if (state.seekable && (source.markers.intro?.contains(state.positionMs, state.durationMs) == true || source.markers.outro?.contains(state.positionMs, state.durationMs) == true)) {
+                if (state.seekable && (episodeMarkers.intro?.contains(state.positionMs, state.durationMs) == true || episodeMarkers.outro?.contains(state.positionMs, state.durationMs) == true)) {
                     Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp), horizontalArrangement = Arrangement.End) {
-                        if (source.markers.intro?.contains(state.positionMs, state.durationMs) == true) OutlinedButton(onClick = { skip(source.markers.intro) }) { Text("Pular abertura  ››") }
-                        if (source.markers.outro?.contains(state.positionMs, state.durationMs) == true) OutlinedButton(onClick = { skip(source.markers.outro) }) { Text("Pular encerramento  ››") }
+                        if (episodeMarkers.intro?.contains(state.positionMs, state.durationMs) == true) OutlinedButton(onClick = { skip(episodeMarkers.intro) }) { Text("Pular abertura  ››") }
+                        if (episodeMarkers.outro?.contains(state.positionMs, state.durationMs) == true) OutlinedButton(onClick = { skip(episodeMarkers.outro) }) { Text("Pular encerramento  ››") }
                     }
                 }
                 if (controlsVisible || !state.playing || resumeFailed || state.error != null) Surface(color = Color(0xF00D0919)) {
                     Column(Modifier.fillMaxWidth().heightIn(max = panelHeight).verticalScroll(rememberScrollState()).padding(horizontal = 18.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                         navigationError?.let { Text(it, color = SpaceColors.error) }
+                        markerLoadError?.let { Text(it, color = SpaceColors.error) }
                         queue?.let { episodeQueue ->
                             val previous = episodeQueue.previous()
-                            val next = episodeQueue.next()
+                            val next = nextEpisode
                             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                                 if (previous != null) {
                                     OutlinedButton(
@@ -246,7 +296,7 @@ fun PlayerScreen(
                                     ) { Text(if (navigationLoading) "Carregando…" else "Próximo episódio →") }
                                 }
                             }
-                            if (state.ended && next != null) {
+                            if (state.ended && next != null && !autoPlayNext) {
                                 Button(
                                     onClick = { onEpisodeChange(next) },
                                     enabled = !navigationLoading,

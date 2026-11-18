@@ -232,6 +232,8 @@ fun App(onFullScreenChange: (Boolean) -> Unit = {}) {
                         navigationLoading = opening,
                         navigationError = playerNavigationError,
                         onEpisodeChange = ::navigateEpisode,
+                        autoPlayNext = profileState.active.autoPlayNext,
+                        onHome = { source = null; playerQueue = null; screen = SpaceScreen.Home; homeFocus = HomeNavFocus.Home },
                         onBack = { source = null; playerQueue = null },
                         onFullScreenChange = onFullScreenChange,
                         onProgress = { playback -> active.context?.let { library.record(it, playback) } },

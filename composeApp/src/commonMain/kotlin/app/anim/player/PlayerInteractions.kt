@@ -30,6 +30,9 @@ fun directSeekForTap(touch: Boolean, horizontal: Float): Long? = when {
 fun shouldAutoAdvance(autoPlayNext: Boolean, ended: Boolean, hasNext: Boolean): Boolean =
     autoPlayNext && ended && hasNext
 
+fun shouldApplyEpisodeMarkerResult(requested: EpisodeMarkerKey, current: EpisodeMarkerKey): Boolean =
+    requested == current
+
 fun videoTapAction(touch: Boolean, visible: Boolean, playing: Boolean, horizontal: Float): VideoTapAction = when {
     touch && !visible -> VideoTapAction.Reveal
     horizontal in .25f.. .75f -> VideoTapAction.Toggle

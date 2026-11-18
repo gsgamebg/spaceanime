@@ -14,6 +14,14 @@ class PlayerInteractionsTest {
         assertFalse(shouldAutoAdvance(autoPlayNext = true, ended = true, hasNext = false))
     }
 
+    @Test fun markerResponseAppliesOnlyToActiveEpisode() {
+        val current = EpisodeMarkerKey("anitube", "series/1", "episode/2")
+        val previous = current.copy(episodeId = "episode/1")
+
+        assertTrue(shouldApplyEpisodeMarkerResult(current, current))
+        assertFalse(shouldApplyEpisodeMarkerResult(previous, current))
+    }
+
     @Test fun markersOnlyApplyInsideRealSeekableDuration() {
         val intro = Segment(75_000, 165_000)
         assertFalse(intro.contains(74_999, 300_000))
