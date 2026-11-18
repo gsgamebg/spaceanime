@@ -1,0 +1,19 @@
+{
+  "name": "spaceanime-backend",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Serviço de preparação para autenticação e pagamentos em sandbox",
+  "type": "commonjs",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "node server.js",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "cheerio": "1.2.0",
+    "firebase-admin": "14.5.1",
+    "stripe": "23.0.0"
+  }
+}

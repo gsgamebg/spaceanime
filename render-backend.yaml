@@ -1,0 +1,41 @@
+services:
+  - type: web
+    name: spaceanime-backend
+    runtime: node
+    rootDir: backend
+    buildCommand: npm ci --omit=dev
+    startCommand: npm start
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_VERSION
+        value: 22.14.0
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_PUBLISHABLE_KEY
+        sync: false
+      - key: SUPABASE_SECRET_KEY
+        sync: false
+      - key: FIREBASE_PROJECT_ID
+        sync: false
+      - key: FIREBASE_CLIENT_EMAIL
+        sync: false
+      - key: FIREBASE_PRIVATE_KEY
+        sync: false
+      - key: CRON_SECRET
+        sync: false
+      - key: CHECKOUT_SANDBOX_ENABLED
+        value: 'false'
+  - type: cron
+    name: spaceanime-daily-digest
+    runtime: node
+    rootDir: backend
+    buildCommand: npm ci --omit=dev
+    startCommand: node trigger-daily-digest.js
+    schedule: "*/15 * * * *"
+    envVars:
+      - key: NODE_VERSION
+        value: 22.14.0
+      - key: BACKEND_BASE_URL
+        sync: false
+      - key: CRON_SECRET
+        sync: false
