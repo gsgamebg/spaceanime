@@ -14,10 +14,10 @@ val admobAppIdPattern = Regex("""ca-app-pub-\d{16}~\d{10}""")
 val admobBannerIdPattern = Regex("""ca-app-pub-\d{16}/\d{10}""")
 val admobTestAppId = "ca-app-pub-3940256099942544~3347511713"
 val admobTestBannerId = "ca-app-pub-3940256099942544/9214589741"
-val releaseVersion = System.getenv("RELEASE_VERSION") ?: "0.7.21"
+val releaseVersion = System.getenv("RELEASE_VERSION") ?: "0.7.22"
 val releaseCode = System.getenv("RELEASE_CODE")?.let { raw ->
     raw.toIntOrNull() ?: error("RELEASE_CODE must be a positive integer.")
-} ?: 37
+} ?: 38
 require(releaseCode > 0) { "RELEASE_CODE must be a positive integer." }
 require(Regex("[0-9]+\\.[0-9]+\\.[0-9]+").matches(releaseVersion)) {
     "RELEASE_VERSION must use the format major.minor.patch."
