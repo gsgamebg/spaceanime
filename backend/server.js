@@ -6,6 +6,7 @@ const { loadRelease, manifest } = require('./update-feed');
 const { createNotificationStore } = require('./notifications-store');
 const { createFirebaseSender } = require('./notifications-fcm');
 const { runDailyDigest } = require('./notifications-worker');
+const { createRuntimeConfigStore } = require('./runtime-config-store');
 
 const MAX_BODY = 65536;
 function json(res, status, data) {
@@ -34,10 +35,12 @@ function createHandler({
   authorizeFinancial,
   persistSandboxEvent,
   notificationStore: notificationStoreOverride,
+  runtimeConfigStore: runtimeConfigStoreOverride,
   runDailyDigest: runDailyDigestOverride,
   firebaseSender: firebaseSenderOverride,
 } = {}) {
   const notificationStore = notificationStoreOverride || createNotificationStore(env);
+  const runtimeConfigStore = runtimeConfigStoreOverride || createRuntimeConfigStore(env);
   const firebaseSender = firebaseSenderOverride || createFirebaseSender({ env });
   const dailyDigestWorker = runDailyDigestOverride || (options =>
     runDailyDigest({ ...options, store: notificationStore, sender: firebaseSender }));
@@ -143,6 +146,13 @@ function createHandler({
     try {
       const path = new URL(req.url, 'http://local').pathname;
       if (req.method === 'GET' && path === '/health') return json(res, 200, { status: 'ok', payments: 'sandbox_only', entitlements: 'disabled' });
+      if (req.method === 'GET' && path === '/api/app-config') {
+        try {
+          return json(res, 200, await runtimeConfigStore.read());
+        } catch {
+          return json(res, 503, { error: 'app_config_unavailable' });
+        }
+      }
       if (req.method === 'GET' && path === '/updates.json') {
         const release = loadRelease(env);
         return release ? json(res, 200, manifest(release)) : json(res, 503, { error: 'updates_not_configured' });
