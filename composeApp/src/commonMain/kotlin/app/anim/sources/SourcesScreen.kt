@@ -10,6 +10,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
+import app.anim.ads.AdBannerSlot
+import app.anim.ads.AdPlacement
 import app.anim.design.*
 import app.anim.player.EpisodeQueue
 import app.anim.player.PlaybackSource
@@ -133,6 +135,7 @@ class SourceBrowserState {
     if (browser.anime == null) {
         Text("Explore seu próximo universo", style = MaterialTheme.typography.headlineLarge)
         Text("Encontre animes legendados e dublados.", color = SpaceColors.onSurfaceVariant)
+        AdBannerSlot(AdPlacement.Catalog)
         Spacer(Modifier.height(18.dp))
         OutlinedTextField(browser.query, { browser.query = it.take(120); cancel() }, Modifier.fillMaxWidth(),
             singleLine = true, placeholder = { Text("Qual anime você procura?") }, label = { Text("Buscar animes") },

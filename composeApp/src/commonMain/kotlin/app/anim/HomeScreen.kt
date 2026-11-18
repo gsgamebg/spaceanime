@@ -31,6 +31,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import app.anim.ads.AdBannerSlot
+import app.anim.ads.AdPlacement
 import app.anim.design.*
 import app.anim.discovery.discoveryTime
 import app.anim.discovery.rememberDiscovery
@@ -150,6 +152,7 @@ internal fun SpaceHomeScreen(
             repository = repository,
             onOpenAnime = onOpenAnime,
         )
+        if (focus == HomeNavFocus.Home) AdBannerSlot(AdPlacement.Home)
 
         val summaryText = when (focus) {
             HomeNavFocus.Home -> "Seu espaço para descobrir histórias e continuar suas maratonas."
