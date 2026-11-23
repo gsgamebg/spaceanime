@@ -9,7 +9,7 @@ import java.util.concurrent.TimeUnit
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
-actual fun createUpdateClient(): UpdateClient = HttpUpdates(UPDATE_MANIFEST_URL, updatePlatform())
+// Legacy Render manifest client, kept for its validation tests; the app uses GitHubReleaseUpdates.
 internal class HttpUpdates(private val endpoint: String, private val platform: String) : UpdateClient {
     private val client = OkHttpClient.Builder().connectTimeout(10, TimeUnit.SECONDS).callTimeout(20, TimeUnit.SECONDS).followRedirects(false).followSslRedirects(false).build()
     override suspend fun check(): AppRelease? {

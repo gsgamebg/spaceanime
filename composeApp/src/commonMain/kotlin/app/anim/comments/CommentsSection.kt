@@ -1,5 +1,6 @@
 package app.anim.comments
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
@@ -25,114 +26,172 @@ import kotlinx.coroutines.launch
     var page by remember(anime) { mutableIntStateOf(0) }
     val comments = remember(state.items, anime) { state.items.filter { it.animeKey == anime.commentKey() } }
 
-    // ── Cabeçalho ─────────────────────────────────────────────────────────────
-    SectionHeader("Comentários 💬")
-    Spacer(Modifier.height(4.dp))
-    Surface(shape = RoundedCornerShape(10.dp), color = SpaceColors.primaryContainer.copy(alpha = .5f), modifier = Modifier.fillMaxWidth()) {
-        Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text("ℹ", fontSize = 16.sp, color = SpaceColors.primary)
-            Text(
-                "Prévia local · só você vê os comentários deste perfil. Ainda não são publicados.",
-                style = MaterialTheme.typography.bodySmall,
-                color = SpaceColors.onSurfaceVariant,
-            )
-        }
-    }
-    Spacer(Modifier.height(16.dp))
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        // ── Cabeçalho ─────────────────────────────────────────────────────────────
+        SectionHeader("Comentários da Comunidade")
 
-    // ── Campo de novo comentário ───────────────────────────────────────────────
-    Row(verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-        ProfileAvatar(author, 0, size = 38.dp)
-        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            OutlinedTextField(
-                draft, { draft = it.take(1000) },
-                modifier = Modifier.fillMaxWidth(),
-                label = { Text("O que achou deste anime?") },
-                minLines = 3, maxLines = 5,
-                shape = RoundedCornerShape(14.dp),
-                supportingText = { Text("${draft.length}/1000 · $author") },
-            )
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                GenreChip("⚠ Contém spoiler", selected = spoiler, onClick = { spoiler = !spoiler })
-
-                Button(
-                    enabled = draft.isNotBlank() && !busy,
-                    onClick = {
-                        busy = true
-                        scope.launch {
-                            try {
-                                store.add(anime, author, draft, spoiler)
-                                if (store.state.value.error == null) { draft = ""; spoiler = false; page = 0 }
-                            } finally { busy = false }
-                        }
-                    },
-                    shape = RoundedCornerShape(50),
-                    colors = ButtonDefaults.buttonColors(containerColor = SpaceColors.primary),
-                ) { Text("Comentar", fontWeight = FontWeight.SemiBold) }
-            }
-        }
-    }
-    state.error?.let { Text(it, color = SpaceColors.error, modifier = Modifier.padding(top = 8.dp)) }
-    Spacer(Modifier.height(16.dp))
-
-    // ── Lista de comentários ───────────────────────────────────────────────────
-    if (comments.isEmpty()) {
-        Surface(shape = RoundedCornerShape(14.dp), color = SpaceColors.surfaceVariant, modifier = Modifier.fillMaxWidth()) {
-            Column(Modifier.padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text("💬", fontSize = 28.sp)
-                Text("Nenhum comentário ainda", style = MaterialTheme.typography.titleMedium)
-                Text("Seja o primeiro a comentar sobre este anime!", color = SpaceColors.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
-            }
-        }
-    }
-    val current = page.coerceAtMost(((comments.size - 1) / 10).coerceAtLeast(0))
-    comments.drop(current * 10).take(10).forEach { comment ->
-        key(comment.id) {
-            var revealed by remember { mutableStateOf(false) }
-            Surface(
-                shape = RoundedCornerShape(16.dp),
-                color = SpaceColors.surfaceVariant,
-                modifier = Modifier.fillMaxWidth().padding(vertical = 5.dp),
+        Surface(
+            shape = RoundedCornerShape(12.dp),
+            color = Color(0xFF1E1B4B),
+            border = BorderStroke(1.dp, Color(0x338B5CF6)),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Row(
+                Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    // Avatar + autor + data
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        ProfileAvatar(comment.author, comment.author.length % 4, size = 36.dp)
-                        Column(Modifier.weight(1f)) {
-                            Text(comment.author, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, color = Color.White)
-                            Text(discoveryTime(comment.createdAt) + " · comentário local", style = MaterialTheme.typography.bodySmall, color = SpaceColors.onSurfaceVariant)
-                        }
-                        if (comment.spoiler) SpaceBadge("SPOILER", color = SpaceColors.error.copy(alpha = .75f))
-                    }
-                    // Texto
-                    if (comment.spoiler && !revealed) {
-                        Surface(
-                            onClick = { revealed = true },
-                            shape = RoundedCornerShape(10.dp),
-                            color = SpaceColors.primaryContainer.copy(alpha = .4f),
-                        ) {
-                            Row(Modifier.fillMaxWidth().padding(12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                                Text("👁", fontSize = 16.sp)
-                                Text("Toque para revelar o spoiler", color = SpaceColors.primary, style = MaterialTheme.typography.bodySmall)
-                            }
-                        }
-                    } else {
-                        Text(comment.text, color = SpaceColors.onSurface)
-                    }
-                    // Ação de excluir
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                        TextButton(
-                            enabled = !busy,
-                            onClick = { busy = true; scope.launch { try { store.remove(comment.id) } finally { busy = false } } },
-                        ) { Text("Excluir", color = SpaceColors.error.copy(alpha = .8f), style = MaterialTheme.typography.labelLarge) }
+                Text("✦", fontSize = 16.sp, color = Color(0xFF06B6D4))
+                Text(
+                    "Prévia local: seus comentários ficam salvos neste perfil para você acompanhar suas reações.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Color(0xFF94A3B8),
+                )
+            }
+        }
+
+        // ── Campo de novo comentário ───────────────────────────────────────────────
+        Surface(
+            shape = RoundedCornerShape(20.dp),
+            color = Color(0xFF0F172A),
+            border = BorderStroke(1.dp, Color(0x338B5CF6)),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Row(
+                modifier = Modifier.padding(18.dp),
+                verticalAlignment = Alignment.Top,
+                horizontalArrangement = Arrangement.spacedBy(14.dp)
+            ) {
+                ProfileAvatar(author, 0, size = 42.dp)
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    OutlinedTextField(
+                        value = draft,
+                        onValueChange = { draft = it.take(1000) },
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text("O que achou deste anime?") },
+                        placeholder = { Text("Compartilhe suas impressões, teorias ou nota...", color = Color(0xFF64748B)) },
+                        minLines = 3,
+                        maxLines = 5,
+                        shape = RoundedCornerShape(14.dp),
+                        supportingText = { Text("${draft.length}/1000 · $author", color = Color(0xFF64748B)) },
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedContainerColor = Color(0xFF020617),
+                            unfocusedContainerColor = Color(0xFF020617),
+                            focusedBorderColor = Color(0xFF8B5CF6),
+                            unfocusedBorderColor = Color(0x338B5CF6),
+                            focusedTextColor = Color(0xFFF8FAFC),
+                            unfocusedTextColor = Color(0xFFF8FAFC),
+                        )
+                    )
+                    FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        GenreChip("⚠ Contém spoiler", selected = spoiler, onClick = { spoiler = !spoiler })
+
+                        Button(
+                            enabled = draft.isNotBlank() && !busy,
+                            onClick = {
+                                busy = true
+                                scope.launch {
+                                    try {
+                                        store.add(anime, author, draft, spoiler)
+                                        if (store.state.value.error == null) { draft = ""; spoiler = false; page = 0 }
+                                    } finally { busy = false }
+                                }
+                            },
+                            shape = RoundedCornerShape(12.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF8B5CF6)),
+                        ) { Text("Comentar", fontWeight = FontWeight.SemiBold, color = Color.White) }
                     }
                 }
             }
         }
-    }
-    if (comments.size > 10) Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        TextButton(enabled = current > 0, onClick = { page = current - 1 }) { Text("← Anterior") }
-        TextButton(enabled = (current + 1) * 10 < comments.size, onClick = { page = current + 1 }) { Text("Próxima →") }
+
+        state.error?.let { Text(it, color = SpaceColors.error) }
+
+        // ── Lista de comentários ───────────────────────────────────────────────────
+        if (comments.isEmpty()) {
+            Surface(
+                shape = RoundedCornerShape(16.dp),
+                color = Color(0xFF0F172A),
+                border = BorderStroke(1.dp, Color(0x228B5CF6)),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(
+                    Modifier.padding(28.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text("💬", fontSize = 32.sp)
+                    Text(
+                        "Nenhum comentário ainda",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFFF8FAFC)
+                    )
+                    Text(
+                        "Seja o primeiro a compartilhar sua opinião sobre este anime!",
+                        color = Color(0xFF94A3B8),
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
+            }
+        }
+
+        val current = page.coerceAtMost(((comments.size - 1) / 10).coerceAtLeast(0))
+        comments.drop(current * 10).take(10).forEach { comment ->
+            key(comment.id) {
+                var revealed by remember { mutableStateOf(false) }
+                Surface(
+                    shape = RoundedCornerShape(16.dp),
+                    color = Color(0xFF0F172A),
+                    border = BorderStroke(1.dp, Color(0x228B5CF6)),
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        // Avatar + autor + data
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            ProfileAvatar(comment.author, comment.author.length % 4, size = 36.dp)
+                            Column(Modifier.weight(1f)) {
+                                Text(comment.author, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, color = Color(0xFFF8FAFC))
+                                Text(discoveryTime(comment.createdAt) + " · local", style = MaterialTheme.typography.bodySmall, color = Color(0xFF94A3B8))
+                            }
+                            if (comment.spoiler) SpaceBadge("SPOILER", color = Color(0xFFEF4444).copy(alpha = .8f))
+                        }
+                        // Texto
+                        if (comment.spoiler && !revealed) {
+                            Surface(
+                                onClick = { revealed = true },
+                                shape = RoundedCornerShape(10.dp),
+                                color = Color(0xFF1E1B4B),
+                                border = BorderStroke(1.dp, Color(0x338B5CF6))
+                            ) {
+                                Row(Modifier.fillMaxWidth().padding(12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    Text("👁", fontSize = 16.sp)
+                                    Text("Toque para revelar o spoiler", color = Color(0xFF06B6D4), style = MaterialTheme.typography.bodySmall)
+                                }
+                            }
+                        } else {
+                            Text(comment.text, color = Color(0xFFE2E8F0), style = MaterialTheme.typography.bodyMedium)
+                        }
+                        // Ação de excluir
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                            TextButton(
+                                enabled = !busy,
+                                onClick = { busy = true; scope.launch { try { store.remove(comment.id) } finally { busy = false } } },
+                            ) { Text("Excluir", color = Color(0xFFEF4444).copy(alpha = .8f), style = MaterialTheme.typography.labelMedium) }
+                        }
+                    }
+                }
+            }
+        }
+        if (comments.size > 10) Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            TextButton(enabled = current > 0, onClick = { page = current - 1 }) { Text("← Anterior", color = Color(0xFF06B6D4)) }
+            TextButton(enabled = (current + 1) * 10 < comments.size, onClick = { page = current + 1 }) { Text("Próxima →", color = Color(0xFF06B6D4)) }
+        }
     }
 }
-

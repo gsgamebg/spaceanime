@@ -279,18 +279,19 @@ actual fun NotificationPreferencesPanel(
 }
 
 @Composable
-private fun PreferenceSwitch(label: String, checked: Boolean, enabled: Boolean, onCheckedChange: (Boolean) -> Unit) {
+private fun PreferenceSwitch(label: String, checked: Boolean, isBusy: Boolean, onCheckedChange: (Boolean) -> Unit) {
+    val controlsEnabled = notificationPreferencesControlsEnabled(isBusy)
     Row(
         Modifier.fillMaxWidth().heightIn(min = 48.dp)
             .semantics {
                 contentDescription = label
                 stateDescription = if (checked) "Ativado" else "Desativado"
             }
-            .toggleable(value = checked, enabled = enabled, role = Role.Switch, onValueChange = onCheckedChange),
+            .toggleable(value = checked, enabled = controlsEnabled, role = Role.Switch, onValueChange = onCheckedChange),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(label, modifier = Modifier.weight(1f), color = MaterialTheme.colorScheme.onSurface)
-        Switch(checked = checked, onCheckedChange = null, enabled = enabled)
+        Switch(checked = checked, onCheckedChange = null, enabled = controlsEnabled)
     }
 }
 

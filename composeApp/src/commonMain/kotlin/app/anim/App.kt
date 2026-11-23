@@ -75,6 +75,8 @@ private data class NavEntry(
 fun App(onFullScreenChange: (Boolean) -> Unit = {}) {
     remember { configureArtwork(); true }
     val accountState = rememberAccountState()
+    // Sends the launch telemetry event (opt-out in Perfil > Privacidade).
+    app.anim.telemetry.rememberTelemetry()
     val profiles = rememberProfiles()
     val profileState by profiles.state.collectAsState()
     val repository = remember { createSourceRepository() }
@@ -455,64 +457,69 @@ fun App(onFullScreenChange: (Boolean) -> Unit = {}) {
                                     animationSpec = tween(if (profileState.active.reduceMotion) 0 else 220),
                                     label = "screen-transition"
                                 ) { currentScreen ->
-                                    when (currentScreen) {
-                                        SpaceScreen.Home -> SpaceHomeScreen(
-                                            profile = profileState.active,
-                                            saved = saved,
-                                            repository = repository,
-                                            compact = !expandedSidebar,
-                                            focus = homeFocus,
-                                            categorySlug = categorySlug,
-                                            onCategory = { categorySlug = it; homeFocus = HomeNavFocus.Categories },
-                                            onTrending = { homeFocus = HomeNavFocus.Trending },
-                                            onSearch = { screen = SpaceScreen.Explore },
-                                            onLibrary = { screen = SpaceScreen.Library },
-                                            onOpenAnime = ::openAnime,
-                                            onContinue = ::resume,
-                                            onOpenRecent = { anime, episode -> openAnime(anime); browser.pendingEpisode = episode },
-                                        )
-
-                                        SpaceScreen.Explore -> SourcesScreen(
-                                            browser = browser,
-                                            repository = repository,
-                                            library = library,
-                                            onPlay = { request, queue -> play(request, queue) },
-                                            comments = comments,
-                                            author = profileState.active.name,
-                                        )
-
-                                        SpaceScreen.Manga -> MangaScreen(mangaSearch, contentScroll, profileState.activeId)
-                                        SpaceScreen.News -> NewsScreen(contentScroll)
-
-                                        SpaceScreen.Calendar -> CalendarScreen { title ->
-                                            headerQuery = title
-                                            browser.anime = null
-                                            browser.query = title
-                                            screen = SpaceScreen.Explore
-                                        }
-
-                                        SpaceScreen.Library -> LibraryScreen(
-                                            library,
-                                            mangaFollows,
-                                            repository,
-                                            onOpen = ::openAnime,
-                                            onOpenManga = { title -> mangaSearch = title; screen = SpaceScreen.Manga },
-                                            onPlay = { request, queue, warning -> play(request, queue, warning) },
-                                        )
-                                        SpaceScreen.Profile -> {
-                                            ProfileScreen(
-                                                profiles = profiles,
-                                                library = library,
-                                                mangaFollows = mangaFollows,
-                                                initialTab = profileTab,
-                                                accountState = accountState,
-                                                release = release,
-                                                checking = checking,
-                                                updateMessage = updateMessage,
-                                                onCheckUpdates = ::checkUpdates,
+                                    Column(
+                                        Modifier.fillMaxWidth(),
+                                        verticalArrangement = Arrangement.spacedBy(20.dp)
+                                    ) {
+                                        when (currentScreen) {
+                                            SpaceScreen.Home -> SpaceHomeScreen(
+                                                profile = profileState.active,
+                                                saved = saved,
+                                                repository = repository,
+                                                compact = !expandedSidebar,
+                                                focus = homeFocus,
+                                                categorySlug = categorySlug,
+                                                onCategory = { categorySlug = it; homeFocus = HomeNavFocus.Categories },
+                                                onTrending = { homeFocus = HomeNavFocus.Trending },
+                                                onSearch = { screen = SpaceScreen.Explore },
+                                                onLibrary = { screen = SpaceScreen.Library },
                                                 onOpenAnime = ::openAnime,
                                                 onContinue = ::resume,
+                                                onOpenRecent = { anime, episode -> openAnime(anime); browser.pendingEpisode = episode },
                                             )
+
+                                            SpaceScreen.Explore -> SourcesScreen(
+                                                browser = browser,
+                                                repository = repository,
+                                                library = library,
+                                                onPlay = { request, queue -> play(request, queue) },
+                                                comments = comments,
+                                                author = profileState.active.name,
+                                            )
+
+                                            SpaceScreen.Manga -> MangaScreen(mangaSearch, contentScroll, profileState.activeId)
+                                            SpaceScreen.News -> NewsScreen(contentScroll)
+
+                                            SpaceScreen.Calendar -> CalendarScreen { title ->
+                                                headerQuery = title
+                                                browser.anime = null
+                                                browser.query = title
+                                                screen = SpaceScreen.Explore
+                                            }
+
+                                            SpaceScreen.Library -> LibraryScreen(
+                                                library,
+                                                mangaFollows,
+                                                repository,
+                                                onOpen = ::openAnime,
+                                                onOpenManga = { title -> mangaSearch = title; screen = SpaceScreen.Manga },
+                                                onPlay = { request, queue, warning -> play(request, queue, warning) },
+                                            )
+                                            SpaceScreen.Profile -> {
+                                                ProfileScreen(
+                                                    profiles = profiles,
+                                                    library = library,
+                                                    mangaFollows = mangaFollows,
+                                                    initialTab = profileTab,
+                                                    accountState = accountState,
+                                                    release = release,
+                                                    checking = checking,
+                                                    updateMessage = updateMessage,
+                                                    onCheckUpdates = ::checkUpdates,
+                                                    onOpenAnime = ::openAnime,
+                                                    onContinue = ::resume,
+                                                )
+                                            }
                                         }
                                     }
                                 }

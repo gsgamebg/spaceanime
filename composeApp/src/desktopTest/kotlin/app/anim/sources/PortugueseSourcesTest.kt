@@ -173,6 +173,28 @@ class PortugueseSourcesTest {
         assertEquals("https://api.anivideo.net/", result.source.headers["Referer"])
     }
 
+    @Test fun cdnPlayerFrameResolvesJwPlayerHlsFile() = runBlocking {
+        val frame = "https://api.anivideo.net/cdn/v1.abcDEF_123-x?i=https://www.anitube.zip/poster.png"
+        val transport = object : SourceTransport {
+            override suspend fun fetch(url: String, referer: String, formBody: String?): SourcePage = when {
+                url.startsWith("https://www.anitube.zip/") -> SourcePage("""<div id="blog2"><iframe src="$frame"></iframe></div>""", url)
+                url == frame -> SourcePage("""<script>jwplayer('v').setup({playlist:[{sources:[{file: "https:\/\/cdn-s01.example.net\/stream\/02.mp4\/index.m3u8"}]}]})</script>""", url)
+                else -> error("Unexpected $url")
+            }
+        }
+        val anime = AnimeResult("anitube", "video/1", "Teste", "https://www.anitube.zip/video/1", false)
+        val result = PortugueseSources(transport).streams(anime, Episode("939914b", 2.0, "Episódio 2", "https://www.anitube.zip/939914b/")).single()
+        assertEquals("https://cdn-s01.example.net/stream/02.mp4/index.m3u8", result.source.url)
+        assertEquals("https://api.anivideo.net/", result.source.headers["Referer"])
+    }
+
+    @Test fun anivideoRequestsAreSentAsIframeNavigation() {
+        assertEquals("iframe", sourceFetchDestination("https://api.anivideo.net/cdn/v1.token"))
+        assertEquals("iframe", sourceFetchDestination("https://api.anivideo.net/file/abc/1/title"))
+        assertNull(sourceFetchDestination("https://www.anitube.zip/939914b/"))
+        assertNull(sourceFetchDestination("https://www.blogger.com/video.g?token=x"))
+    }
+
     @Test fun bloggerEscapesAreDecodedAndQualityIsRecognized() {
         val html = """{"streams":[{"play_url":"https:\/\/video.example\/file?x=1\u0026y=2","format_id":22}]}"""
         assertEquals(listOf("https://video.example/file?x=1&y=2" to "720p"), parser.parseBloggerStreams(html))

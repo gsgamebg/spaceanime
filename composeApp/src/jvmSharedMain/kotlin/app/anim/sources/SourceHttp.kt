@@ -21,13 +21,20 @@ internal fun allowedSourceAddress(raw: String): Boolean {
         url.host in setOf("www.anitube.zip", "anitube.zip", "animesdigital.org", "www.animesdigital.org", "www.blogger.com", "api.anivideo.net")
 }
 
+/** The anivideo player refuses (HTTP 403 NOT_IFRAME) requests that are not iframe navigations. */
+internal fun sourceFetchDestination(raw: String): String? =
+    raw.toHttpUrlOrNull()?.takeIf { it.host == "api.anivideo.net" }?.let { "iframe" }
+
 internal class SourceHttp : SourceTransport {
     private val client = OkHttpClient.Builder().connectTimeout(10, TimeUnit.SECONDS)
         .readTimeout(20, TimeUnit.SECONDS).callTimeout(25, TimeUnit.SECONDS)
         .followSslRedirects(false)
         .addNetworkInterceptor { chain ->
-            if (!allowedSourceAddress(chain.request().url.toString())) throw IOException("Untrusted source destination")
-            chain.proceed(chain.request())
+            val request = chain.request()
+            if (!allowedSourceAddress(request.url.toString())) throw IOException("Untrusted source destination")
+            // Runs on every redirect hop, so bg.mp4 -> api.anivideo.net/file/... also gets the header.
+            val destination = sourceFetchDestination(request.url.toString())
+            chain.proceed(if (destination == null) request else request.newBuilder().header("Sec-Fetch-Dest", destination).build())
         }.build()
 
     override suspend fun fetch(url: String, referer: String, formBody: String?): SourcePage {

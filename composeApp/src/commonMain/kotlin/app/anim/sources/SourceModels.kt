@@ -46,3 +46,10 @@ fun missingEpisodeNumbers(episodes: List<Episode>): List<Int> {
     if (last < 2) return emptyList()
     return (1..last).filter { it !in numbers }
 }
+
+/** Best option to start playback right away: adaptive HLS first (fastest start), then the highest fixed quality. */
+fun preferredStream(streams: List<StreamOption>): StreamOption? =
+    streams.maxByOrNull { option ->
+        val adaptive = if (option.source.url.contains(".m3u8", ignoreCase = true)) 10_000 else 0
+        adaptive + (Regex("([0-9]{3,4})p").find(option.label)?.groupValues?.get(1)?.toIntOrNull() ?: 0)
+    }

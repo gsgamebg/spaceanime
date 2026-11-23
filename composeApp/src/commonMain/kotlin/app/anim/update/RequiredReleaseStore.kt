@@ -3,8 +3,7 @@ package app.anim.update
 import androidx.compose.runtime.Composable
 
 internal fun AppRelease.isValidStoredRelease(): Boolean {
-    val manifestHost = UPDATE_MANIFEST_URL.removePrefix("https://").substringBefore('/')
-    val downloadPrefix = "https://$manifestHost/"
+    val downloadPrefix = RELEASE_DOWNLOAD_PREFIX
     return code > 0 &&
         Regex("[0-9]+\\.[0-9]+\\.[0-9]+").matches(version) &&
         version.length <= 32 &&

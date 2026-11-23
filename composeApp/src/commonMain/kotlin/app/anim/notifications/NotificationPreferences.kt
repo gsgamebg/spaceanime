@@ -27,6 +27,8 @@ data class NotificationSubscription(
     val audioVariant: String,
 )
 
+fun notificationPreferencesControlsEnabled(isBusy: Boolean): Boolean = !isBusy
+
 fun projectNotificationSubscriptions(
     animeFavorites: List<AnimeResult>,
     followedManga: List<MangaReference>,

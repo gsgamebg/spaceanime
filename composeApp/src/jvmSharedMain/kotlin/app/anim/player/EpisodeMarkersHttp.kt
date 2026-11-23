@@ -25,12 +25,12 @@ internal class EpisodeMarkersHttp(
         .build(),
 ) : EpisodeMarkersClient {
     override suspend fun load(key: EpisodeMarkerKey): EpisodeMarkers? {
-        require(key.isValid()) { "Chave de episódio inválida." }
+        if (!key.isValid()) throw EpisodeMarkersLoadException()
         val endpoint = (SUPABASE_URL + "/rest/v1/rpc/spaceanime_public_episode_markers")
             .toHttpUrlOrNull()
-            ?: throw IOException("Endpoint de marcadores inválido.")
-        require(endpoint.isHttps && endpoint.username.isEmpty() && endpoint.password.isEmpty()) {
-            "Endpoint de marcadores inválido."
+            ?: throw EpisodeMarkersLoadException()
+        if (!endpoint.isHttps || endpoint.username.isNotEmpty() || endpoint.password.isNotEmpty()) {
+            throw EpisodeMarkersLoadException()
         }
         val payload = buildJsonObject {
             put("p_source_id", key.sourceId)
@@ -49,7 +49,7 @@ internal class EpisodeMarkersHttp(
             continuation.invokeOnCancellation { call.cancel() }
             call.enqueue(object : Callback {
                 override fun onFailure(call: Call, e: IOException) {
-                    if (continuation.isActive) continuation.resumeWithException(e)
+                    if (continuation.isActive) continuation.resumeWithException(EpisodeMarkersLoadException(e))
                 }
 
                 override fun onResponse(call: Call, response: Response) {
@@ -74,7 +74,7 @@ internal class EpisodeMarkersHttp(
                         }
                         if (continuation.isActive) continuation.resume(markers)
                     } catch (e: Exception) {
-                        if (continuation.isActive) continuation.resumeWithException(e)
+                        if (continuation.isActive) continuation.resumeWithException(EpisodeMarkersLoadException(e))
                     }
                 }
             })
@@ -107,8 +107,8 @@ internal fun parseEpisodeMarkers(text: String, expected: EpisodeMarkerKey): Epis
         val end = root.getValue("${name}_end_ms")
         if (start is JsonNull && end is JsonNull) return null
         require(start !is JsonNull && end !is JsonNull) { "Intervalo $name incompleto." }
-        val startMs = start.jsonPrimitive.longOrNull ?: error("Início de $name inválido.")
-        val endMs = end.jsonPrimitive.longOrNull ?: error("Fim de $name inválido.")
+        val startMs = start.jsonPrimitive.longOrNull ?: throw IllegalArgumentException("Início de $name inválido.")
+        val endMs = end.jsonPrimitive.longOrNull ?: throw IllegalArgumentException("Fim de $name inválido.")
         return Segment(startMs, endMs)
     }
 

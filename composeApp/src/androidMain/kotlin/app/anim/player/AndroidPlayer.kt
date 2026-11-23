@@ -13,6 +13,8 @@ import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.C
 import androidx.media3.common.TrackSelectionOverride
+import androidx.media3.common.MimeTypes
+import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
@@ -102,9 +104,28 @@ actual fun rememberPlayerController(source: PlaybackSource): PlayerController {
     val context = LocalContext.current.applicationContext
     val owner = LocalLifecycleOwner.current
     val controller = remember(source) {
-        val http = DefaultHttpDataSource.Factory().setDefaultRequestProperties(source.headers)
+        val http = DefaultHttpDataSource.Factory()
+            .setDefaultRequestProperties(source.headers)
+            .setConnectTimeoutMs(12_000)
+            .setReadTimeoutMs(15_000)
+            // CDNs often redirect between hosts/protocols for HLS segments.
+            .setAllowCrossProtocolRedirects(true)
         val data = DefaultDataSource.Factory(context, http)
-        AndroidPlayer(ExoPlayer.Builder(context).setMediaSourceFactory(DefaultMediaSourceFactory(data)).build())
+        val loadControl = DefaultLoadControl.Builder()
+            .setBufferDurationsMs(
+                PlayerBuffering.MIN_BUFFER_MS,
+                PlayerBuffering.MAX_BUFFER_MS,
+                PlayerBuffering.START_BUFFER_MS,
+                PlayerBuffering.REBUFFER_MS,
+            )
+            .setPrioritizeTimeOverSizeThresholds(true)
+            .build()
+        AndroidPlayer(
+            ExoPlayer.Builder(context)
+                .setMediaSourceFactory(DefaultMediaSourceFactory(data))
+                .setLoadControl(loadControl)
+                .build()
+        )
     }
     DisposableEffect(controller, owner) {
         val observer = LifecycleEventObserver { _, event ->
@@ -120,7 +141,11 @@ actual fun rememberPlayerController(source: PlaybackSource): PlayerController {
                 .setLabel(subtitle.label).setLanguage(subtitle.language).setMimeType(subtitle.mimeType)
                 .setSelectionFlags(if (index == 0) C.SELECTION_FLAG_DEFAULT else 0).build()
         }
-        controller.player.setMediaItem(MediaItem.Builder().setUri(source.url).setSubtitleConfigurations(subtitles).build())
+        val item = MediaItem.Builder().setUri(source.url).setSubtitleConfigurations(subtitles)
+            .apply { if (isHlsUrl(source.url)) setMimeType(MimeTypes.APPLICATION_M3U8) }
+            .build()
+        // Start buffering at the resume point instead of loading from 0 and seeking afterwards.
+        controller.player.setMediaItem(item, source.startPositionMs.coerceAtLeast(0))
         controller.player.prepare()
         controller.player.playWhenReady = true
         // Event callbacks cover state changes; a modest clock tick is enough for progress without waking the UI 4x/sec.

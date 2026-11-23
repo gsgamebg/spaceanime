@@ -11,8 +11,23 @@ import app.anim.profile.LocalProfile
 import app.anim.notifications.NotificationPreferences
 import app.anim.notifications.NotificationSubscription
 
-internal data class AccountSession(val accessToken: String, val email: String, val expiresAt: Long, val userId: String)
+internal data class AccountSession(
+    val accessToken: String,
+    val email: String,
+    val expiresAt: Long,
+    val userId: String,
+    val refreshToken: String = "",
+) {
+    override fun toString() = "AccountSession(email=$email, userId=$userId, expiresAt=$expiresAt, tokens=<redacted>)"
+}
 internal data class AccountResult(val session: AccountSession?, val message: String)
+internal sealed interface RefreshOutcome {
+    data class Renewed(val session: AccountSession) : RefreshOutcome
+    /** The server refused the refresh token (revoked, reused or expired): the user must sign in again. */
+    data object Rejected : RefreshOutcome
+    /** Network or server problem: keep the stored token and retry later. */
+    data object Unavailable : RefreshOutcome
+}
 internal data class OnlineProfile(val name: String, val bio: String, val avatar: String = "default", val banner: String = "default")
 internal fun parseOnlineProfile(text: String): OnlineProfile? {
     val rows = Json.parseToJsonElement(text).jsonArray
@@ -30,7 +45,39 @@ internal fun parseOnlineProfile(text: String): OnlineProfile? {
 internal class AccountClient(
     private val client: OkHttpClient = OkHttpClient.Builder().connectTimeout(10, TimeUnit.SECONDS).callTimeout(20, TimeUnit.SECONDS).followRedirects(false).followSslRedirects(false).build(),
     private val backendUrl: String = BACKEND_URL,
+    private val clock: () -> Long = System::currentTimeMillis,
 ) {
+    private fun sessionFrom(data: JsonObject, fallbackEmail: String?): AccountSession? {
+        val token = data["access_token"]?.jsonPrimitive?.contentOrNull
+        if (token.isNullOrBlank()) return null
+        val expiresIn = data["expires_in"]?.jsonPrimitive?.longOrNull?.coerceIn(1, 86400) ?: 3600
+        val user = data["user"] as? JsonObject
+        val userId = user?.get("id")?.jsonPrimitive?.contentOrNull
+        if (userId == null || !Regex("[0-9a-fA-F-]{36}").matches(userId)) return null
+        val email = user["email"]?.jsonPrimitive?.contentOrNull?.takeIf { it.isNotBlank() } ?: fallbackEmail ?: return null
+        val refresh = data["refresh_token"]?.jsonPrimitive?.contentOrNull.orEmpty()
+        return AccountSession(token, email, clock() + expiresIn * 1000, userId, refresh)
+    }
+
+    suspend fun refresh(session: AccountSession): RefreshOutcome = withContext(Dispatchers.IO) {
+        if (session.refreshToken.isBlank()) return@withContext RefreshOutcome.Rejected
+        val body = buildJsonObject { put("refresh_token", session.refreshToken) }.toString().toRequestBody("application/json".toMediaType())
+        val request = Request.Builder().url("$SUPABASE_URL/auth/v1/token?grant_type=refresh_token")
+            .header("apikey", SUPABASE_PUBLISHABLE_KEY).post(body).build()
+        try {
+            client.newCall(request).execute().use { response ->
+                when {
+                    response.code in setOf(400, 401, 403) -> RefreshOutcome.Rejected
+                    !response.isSuccessful -> RefreshOutcome.Unavailable
+                    else -> sessionFrom(readJson(response), session.email)
+                        ?.takeIf { it.userId == session.userId }
+                        ?.let { RefreshOutcome.Renewed(it) } ?: RefreshOutcome.Unavailable
+                }
+            }
+        } catch (e: kotlinx.coroutines.CancellationException) { throw e }
+        catch (_: Exception) { RefreshOutcome.Unavailable }
+    }
+
     suspend fun authenticate(email: String, password: String, signup: Boolean): AccountResult = withContext(Dispatchers.IO) {
         require(email.length in 3..254 && email.contains('@') && password.length in 6..128)
         val body = buildJsonObject { put("email", email); put("password", password) }.toString().toRequestBody("application/json".toMediaType())
@@ -48,10 +95,8 @@ internal class AccountClient(
             val data = readJson(response)
             val token = data["access_token"]?.jsonPrimitive?.contentOrNull
             if (token.isNullOrBlank()) return@withContext AccountResult(null, if (signup) "Se o cadastro foi aceito, confira seu email para confirmar a conta antes de entrar." else "Não foi possível iniciar a sessão.")
-            val expiresIn = data["expires_in"]?.jsonPrimitive?.longOrNull?.coerceIn(1, 86400) ?: 3600
-            val userId = data["user"]?.jsonObject?.get("id")?.jsonPrimitive?.contentOrNull
-            if (userId == null || !Regex("[0-9a-fA-F-]{36}").matches(userId)) return@withContext AccountResult(null, "Não foi possível validar a conta.")
-            AccountResult(AccountSession(token, email, System.currentTimeMillis() + expiresIn * 1000, userId), "Conta conectada.")
+            val session = sessionFrom(data, email) ?: return@withContext AccountResult(null, "Não foi possível validar a conta.")
+            AccountResult(session, "Conta conectada.")
         }
     }
     suspend fun linkInitialProfile(session: AccountSession, profile: LocalProfile): String = withContext(Dispatchers.IO) {

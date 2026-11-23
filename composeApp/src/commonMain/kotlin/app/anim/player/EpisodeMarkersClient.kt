@@ -10,6 +10,9 @@ interface EpisodeMarkersClient {
     suspend fun load(key: EpisodeMarkerKey): EpisodeMarkers?
 }
 
+class EpisodeMarkersLoadException internal constructor(cause: Throwable? = null) :
+    Exception("Episode markers are unavailable.", cause)
+
 expect fun createEpisodeMarkersClient(): EpisodeMarkersClient
 
 internal fun EpisodeMarkerKey.isValid(): Boolean =

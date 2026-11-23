@@ -12,3 +12,10 @@ local.properties
 
 *.apk
 *firebase-adminsdk*.json
+
+# Secrets: signing keys and environment files never go to the public repository.
+*.jks
+*.keystore
+.env
+.env.*
+!.env.example

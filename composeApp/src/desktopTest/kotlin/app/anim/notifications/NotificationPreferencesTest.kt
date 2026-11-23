@@ -9,6 +9,12 @@ import kotlin.test.assertTrue
 
 class NotificationPreferencesTest {
     @Test
+    fun categoryControlsAreEnabledWhenIdleAndDisabledWhileSaving() {
+        assertTrue(notificationPreferencesControlsEnabled(isBusy = false))
+        assertFalse(notificationPreferencesControlsEnabled(isBusy = true))
+    }
+
+    @Test
     fun preferencesAreOffByDefaultAndValidateDigestFields() {
         val defaults = NotificationPreferences()
 

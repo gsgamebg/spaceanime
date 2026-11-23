@@ -8,10 +8,18 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.border
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.graphics.BlendMode
+import androidx.compose.ui.graphics.CompositingStrategy
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
@@ -31,11 +39,26 @@ import app.anim.notifications.NotificationPreferencesPanel
 import app.anim.library.*
 import app.anim.sources.AnimeResult
 import app.anim.player.playbackTime
+import app.anim.telemetry.rememberTelemetry
+import app.anim.update.APP_VERSION
 import app.anim.update.AppRelease
 import app.anim.update.UpdateCard
 import kotlinx.coroutines.launch
 
 enum class ProfileTab { History, Favorites, Lists, Plans, Settings }
+
+private val CardColor = Color(0xFF0D1225)
+private val CardBorder = Color(0x228B5CF6)
+private val Muted = Color(0xFF94A3B8)
+
+/** Visible tabs; Favorites is shown inside "Minha lista" so the two never duplicate each other. */
+private val visibleTabs = listOf(ProfileTab.History, ProfileTab.Lists, ProfileTab.Plans, ProfileTab.Settings)
+private fun ProfileTab.label() = when (this) {
+    ProfileTab.History -> "Histórico"
+    ProfileTab.Favorites, ProfileTab.Lists -> "Minha lista"
+    ProfileTab.Plans -> "Planos"
+    ProfileTab.Settings -> "Configurações"
+}
 
 @Composable fun ProfileScreen(
     profiles: Profiles,
@@ -53,6 +76,8 @@ enum class ProfileTab { History, Favorites, Lists, Plans, Settings }
     val state by profiles.state.collectAsState()
     val snapshot by library.state.collectAsState()
     val followedMangaState by mangaFollows.state.collectAsState()
+    val telemetry = rememberTelemetry()
+    val telemetryEnabled by telemetry.enabled.collectAsState()
     val scope = rememberCoroutineScope()
     var editing by remember { mutableStateOf(false) }
     var creating by remember { mutableStateOf(false) }
@@ -64,7 +89,7 @@ enum class ProfileTab { History, Favorites, Lists, Plans, Settings }
     var bannerChoice by remember { mutableStateOf("default") }
     var busy by remember { mutableStateOf(false) }
     var saveError by remember { mutableStateOf<String?>(null) }
-    var tab by remember(initialTab) { mutableStateOf(initialTab) }
+    var tab by remember(initialTab) { mutableStateOf(if (initialTab == ProfileTab.Favorites) ProfileTab.Lists else initialTab) }
     var historyPage by remember { mutableIntStateOf(0) }
     var favoritesPage by remember { mutableIntStateOf(0) }
     var collection by remember { mutableStateOf("Favoritos") }
@@ -72,41 +97,69 @@ enum class ProfileTab { History, Favorites, Lists, Plans, Settings }
     val watchedEpisodes = snapshot.progress.count { it.completed }
     val favorites = snapshot.favorites
     fun edit() { name = state.active.name; username = state.active.username; bio = state.active.bio; color = state.active.color; avatarChoice = accountState.avatarAsset; bannerChoice = accountState.bannerAsset; saveError = null; creating = false; editing = true }
+    fun toggle(action: suspend () -> Unit) { busy = true; scope.launch { try { action() } finally { busy = false } } }
 
-    Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(24.dp), color = SpaceCardColor, contentColor = Color.White) {
-            Box(Modifier.fillMaxWidth()) {
-                Image(painterResource(if (accountState.bannerAsset == "cosmos") Res.drawable.profile_cosmos else Res.drawable.space_hero_v1), contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.matchParentSize())
-                Box(Modifier.matchParentSize().background(Brush.horizontalGradient(listOf(Color(0xE8080611), Color(0xC0080611), Color(0x66080611)))))
-                Column(Modifier.fillMaxWidth().padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                    BoxWithConstraints(Modifier.fillMaxWidth()) {
-                        if (maxWidth < 520.dp) Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                            ProfilePicture(accountState.avatarAsset, state.active.name, state.active.color, 76.dp)
-                            Text(state.active.name, style = MaterialTheme.typography.headlineLarge, color = Color.White)
-                            Text(accountState.email ?: "Perfil da conta", color = SpaceColors.secondary)
-                            Text(state.active.bio.ifBlank { "Seu universo de histórias começa aqui." }, color = Color(0xFFE2DCEC))
-                            OutlinedButton(enabled = !busy, onClick = ::edit) { Text("Editar perfil") }
-                        } else Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(20.dp)) {
-                            ProfilePicture(accountState.avatarAsset, state.active.name, state.active.color, 90.dp)
-                            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                                Text(state.active.name, style = MaterialTheme.typography.headlineLarge, color = Color.White)
-                                Text(accountState.email ?: "Perfil da conta", color = SpaceColors.secondary)
-                                Text(state.active.bio.ifBlank { "Seu universo de histórias começa aqui." }, color = Color(0xFFE2DCEC))
-                            }
-                            OutlinedButton(enabled = !busy, onClick = ::edit) { Text("Editar perfil") }
+    Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(18.dp)) {
+        // ── Cabeçalho: banner, avatar, nome e estatísticas (um layout só, adaptado à largura) ──
+        BoxWithConstraints(Modifier.fillMaxWidth()) {
+            val compact = maxWidth < 640.dp
+            // Wide screens: height follows width so the art is not reduced to a thin, over-zoomed strip.
+            val bannerHeight = if (compact) 128.dp else (maxWidth / 5).coerceIn(200.dp, 300.dp)
+            val avatarSize = if (compact) 72.dp else 88.dp
+            val banner = painterResource(if (accountState.bannerAsset == "cosmos") Res.drawable.profile_cosmos else Res.drawable.space_hero_v1)
+            Surface(Modifier.fillMaxWidth(), shape = RoundedCornerShape(20.dp), color = CardColor, border = BorderStroke(1.dp, CardBorder), contentColor = Color.White) {
+                Column(Modifier.fillMaxWidth()) {
+                    Box(Modifier.fillMaxWidth().height(bannerHeight).clipToBounds()) {
+                        if (compact) {
+                            // Phone layout unchanged.
+                            Image(banner, null, Modifier.fillMaxSize(), alignment = Alignment.TopCenter, contentScale = ContentScale.Crop)
+                        } else {
+                            // Blurred, dimmed copy fills the width…
+                            Image(banner, null, Modifier.fillMaxSize().blur(28.dp).alpha(0.55f), contentScale = ContentScale.Crop)
+                            // …and the full artwork sits on the right, its left edge faded into the fill.
+                            val ratio = banner.intrinsicSize.let { if (it.height > 0f) it.width / it.height else 16f / 9f }
+                            Image(
+                                banner, null,
+                                Modifier.align(Alignment.CenterEnd).fillMaxHeight().aspectRatio(ratio)
+                                    .graphicsLayer(compositingStrategy = CompositingStrategy.Offscreen)
+                                    .drawWithContent {
+                                        drawContent()
+                                        drawRect(Brush.horizontalGradient(0f to Color.Transparent, 0.28f to Color.Black), blendMode = BlendMode.DstIn)
+                                    },
+                                contentScale = ContentScale.Fit,
+                            )
                         }
+                        Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0f to Color.Transparent, 0.6f to Color(0x220D1225), 1f to CardColor)))
                     }
-                    FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        StatPill("Episódios vistos", watchedEpisodes.toString(), Modifier.widthIn(min = 130.dp))
-                        StatPill("Favoritos", favorites.size.toString(), Modifier.widthIn(min = 130.dp))
-                        StatPill("Animes em andamento", watching.size.toString(), Modifier.widthIn(min = 130.dp))
+                    Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp).offset(y = -(avatarSize / 2)), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                            Box(Modifier.border(3.dp, CardColor, CircleShape)) {
+                                ProfilePicture(accountState.avatarAsset, state.active.name, state.active.color, avatarSize)
+                            }
+                            Column(Modifier.weight(1f).padding(bottom = 4.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                Text(state.active.name, style = if (compact) MaterialTheme.typography.titleMedium else MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = Color(0xFFF8FAFC))
+                                Text(accountState.email ?: "Perfil local", style = MaterialTheme.typography.bodySmall, color = Color(0xFF06B6D4))
+                            }
+                            OutlinedButton(onClick = ::edit, enabled = !busy, shape = RoundedCornerShape(12.dp), border = BorderStroke(1.dp, Color(0x558B5CF6)), contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)) {
+                                SpaceIcon("edit", null, Modifier.size(14.dp), Color(0xFF06B6D4), glow = false)
+                                if (!compact) { Spacer(Modifier.width(6.dp)); Text("Editar perfil", style = MaterialTheme.typography.labelMedium, color = Color.White) }
+                            }
+                        }
+                        if (state.active.bio.isNotBlank()) Text(state.active.bio, style = MaterialTheme.typography.bodySmall, color = Muted)
+                        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            StatPill("Episódios vistos", watchedEpisodes.toString())
+                            StatPill("Favoritos", favorites.size.toString())
+                            StatPill("Em andamento", watching.size.toString())
+                        }
                     }
                 }
             }
         }
+
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            ProfileTab.entries.forEach { entry -> GenreChip(when (entry) { ProfileTab.History -> "Histórico"; ProfileTab.Favorites -> "Favoritos"; ProfileTab.Lists -> "Minha lista"; ProfileTab.Plans -> "Planos"; ProfileTab.Settings -> "Configurações" }, tab == entry) { tab = entry } }
+            visibleTabs.forEach { entry -> GenreChip(entry.label(), tab == entry) { tab = entry } }
         }
+
         when (tab) {
             ProfileTab.History -> {
                 val history = snapshot.progress.sortedByDescending { it.updatedAt }
@@ -135,12 +188,10 @@ enum class ProfileTab { History, Favorites, Lists, Plans, Settings }
                 }
             }
             ProfileTab.Favorites, ProfileTab.Lists -> {
-                val items = if (tab == ProfileTab.Lists && collection == "Assistindo") watching else favorites
-                if (tab == ProfileTab.Lists) {
-                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        GenreChip("Favoritos", collection == "Favoritos") { collection = "Favoritos"; favoritesPage = 0 }
-                        GenreChip("Assistindo", collection == "Assistindo") { collection = "Assistindo"; favoritesPage = 0 }
-                    }
+                val items = if (collection == "Assistindo") watching else favorites
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    GenreChip("Favoritos · ${favorites.size}", collection == "Favoritos") { collection = "Favoritos"; favoritesPage = 0 }
+                    GenreChip("Assistindo · ${watching.size}", collection == "Assistindo") { collection = "Assistindo"; favoritesPage = 0 }
                 }
                 if (items.isEmpty()) SpaceEmptyState("Esta lista ainda está vazia", "Adicione um anime aos favoritos ou comece a assistir.")
                 val page = favoritesPage.coerceAtMost(((items.size - 1) / 20).coerceAtLeast(0))
@@ -151,68 +202,36 @@ enum class ProfileTab { History, Favorites, Lists, Plans, Settings }
                 }
             }
             ProfileTab.Plans -> PremiumPlans()
-            ProfileTab.Settings -> {
-                SectionHeader("Sua conta", "Nome e biografia vinculados à sua conta")
-                SpacePanel(modifier = Modifier.fillMaxWidth(), tonal = Color(0xFF0F172A)) {
-                    Text("Conectado como: ${accountState.email.orEmpty().ifBlank { state.active.name }}", color = Color.White, fontWeight = FontWeight.SemiBold)
-                    Text("Sua biblioteca e histórico permanecem salvos localmente neste dispositivo.", color = SpaceColors.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
-                    OutlinedButton(enabled = !busy, onClick = {
-                        busy = true
-                        scope.launch {
-                            try { accountState.signOut() }
-                            finally { busy = false }
-                        }
-                    }) {
-                        Text("Sair da conta")
+            ProfileTab.Settings -> Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                SettingsGroup("Conta", "user-round") {
+                    SettingsRow("Conectado como", accountState.email.orEmpty().ifBlank { state.active.name }) {
+                        OutlinedButton(enabled = !busy, onClick = { toggle { accountState.signOut() } }, shape = RoundedCornerShape(12.dp)) { Text("Sair") }
+                    }
+                    SettingsRow("Dados locais", "Biblioteca e histórico ficam salvos neste dispositivo.")
+                }
+                SettingsGroup("Reprodução", "play") {
+                    SettingsRow("Próximo episódio automático", "Avança apenas quando há próximo episódio na fila.") {
+                        Switch(state.active.autoPlayNext, enabled = !busy, onCheckedChange = { value -> toggle { profiles.setAutoPlayNext(value) } })
                     }
                 }
-
-                SectionHeader("Notificações", "Escolha quais novidades deseja receber neste dispositivo")
-                NotificationPreferencesPanel(accountState, favorites, followedMangaState.followed)
-
-                SectionHeader("Atualizações do SpaceAnime", "Versão e suporte contínuo aos servidores Space")
-                UpdateCard(release, checking, updateMessage, onCheckUpdates)
-
-                SectionHeader("Privacidade e Segurança", "Seus dados locais protegidos")
-                SpacePanel(modifier = Modifier.fillMaxWidth(), tonal = Color(0xFF0F172A)) {
-                    Text(
-                        "Perfis e biblioteca ficam neste dispositivo. Capas e consultas usam conexões seguras HTTPS sem anúncios invasivos ou rastreamento.",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = SpaceColors.onSurfaceVariant,
-                    )
-                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        SpaceBadge("HTTPS Seguro", SpaceColors.secondary)
-                        SpaceBadge("Dados Locais", SpaceColors.primary)
-                        SpaceBadge("Privacidade Space", SpaceColors.tertiary)
+                SettingsGroup("Aparência", "sparkles") {
+                    SettingsRow("Reduzir movimento", "Desativa transições animadas e suaviza a rolagem.") {
+                        Switch(state.active.reduceMotion, enabled = !busy, onCheckedChange = { value -> toggle { profiles.setReducedMotion(value) } })
                     }
                 }
-
-                SectionHeader("Acessibilidade & Preferências", "Opções visuais do aplicativo")
-                SpacePanel(modifier = Modifier.fillMaxWidth(), tonal = Color(0xFF0F172A)) {
-                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                        Column(Modifier.weight(1f)) {
-                            Text("Reduzir movimento", color = Color.White, fontWeight = FontWeight.Medium)
-                            Text("Desativa transições animadas e suaviza rolagem.", style = MaterialTheme.typography.bodySmall, color = SpaceColors.onSurfaceVariant)
-                        }
-                        Switch(state.active.reduceMotion, enabled = !busy, onCheckedChange = { value -> busy = true; scope.launch { try { profiles.setReducedMotion(value) } finally { busy = false } } })
-                    }
-                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                        Column(Modifier.weight(1f)) {
-                            Text("Reproduzir próximo episódio automaticamente", color = Color.White, fontWeight = FontWeight.Medium)
-                            Text("Desativado por padrão. Avança apenas quando há próximo episódio na fila.", style = MaterialTheme.typography.bodySmall, color = SpaceColors.onSurfaceVariant)
-                        }
-                        Switch(
-                            checked = state.active.autoPlayNext,
-                            enabled = !busy,
-                            onCheckedChange = { value ->
-                                busy = true
-                                scope.launch {
-                                    try { profiles.setAutoPlayNext(value) }
-                                    finally { busy = false }
-                                }
-                            },
-                        )
-                    }
+                SettingsGroup("Privacidade", "shield-check") {
+                    SettingsRow(
+                        "Enviar dados de uso",
+                        "Versão do app, modelo e sistema do aparelho, idioma, fuso e endereço IP, com um identificador aleatório desta instalação. Usado para estatísticas e suporte; apagado após 90 dias.",
+                    ) { Switch(telemetryEnabled, onCheckedChange = telemetry::setEnabled) }
+                    SettingsRow("Anúncios", "Somente banners na Início e no Catálogo do Android, após o seu consentimento.")
+                }
+                SettingsGroup("Notificações", "bell") {
+                    NotificationPreferencesPanel(accountState, favorites, followedMangaState.followed)
+                }
+                SettingsGroup("Sobre", "refresh-cw") {
+                    SettingsRow("Versão instalada", "SpaceAnime $APP_VERSION")
+                    UpdateCard(release, checking, updateMessage, onCheckUpdates)
                 }
             }
         }
@@ -260,3 +279,29 @@ enum class ProfileTab { History, Favorites, Lists, Plans, Settings }
     else Image(painterResource(if (id == "nova") Res.drawable.avatar_nova else Res.drawable.avatar_orion), contentDescription = "Avatar de $name", modifier = Modifier.size(size).clip(CircleShape), contentScale = ContentScale.Crop)
 }
 private fun AnimeResult.commentIdentity() = Triple(sourceId, id, dubbed)
+
+/** One settings card: icon + title header, rows separated by thin dividers. */
+@Composable private fun SettingsGroup(title: String, icon: String, content: @Composable ColumnScope.() -> Unit) {
+    Surface(Modifier.fillMaxWidth(), shape = RoundedCornerShape(18.dp), color = CardColor, border = BorderStroke(1.dp, CardBorder), contentColor = Color.White) {
+        Column(Modifier.fillMaxWidth().padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Box(Modifier.size(30.dp).clip(RoundedCornerShape(9.dp)).background(Color(0x268B5CF6)), contentAlignment = Alignment.Center) {
+                    SpaceIcon(icon, null, Modifier.size(16.dp), Color(0xFF06B6D4), glow = false)
+                }
+                Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, color = Color(0xFFF8FAFC))
+            }
+            HorizontalDivider(color = CardBorder)
+            content()
+        }
+    }
+}
+
+@Composable private fun SettingsRow(title: String, subtitle: String, trailing: (@Composable () -> Unit)? = null) {
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(title, color = Color.White, fontWeight = FontWeight.Medium)
+            Text(subtitle, style = MaterialTheme.typography.bodySmall, color = Muted)
+        }
+        trailing?.invoke()
+    }
+}

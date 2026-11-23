@@ -27,13 +27,14 @@ internal class DesktopPlayer(private val source: PlaybackSource) : PlayerControl
     }
     private val factory: MediaPlayerFactory
     val component: EmbeddedMediaPlayerComponent
-    private val mediaOptions = source.headers.map { (name, value) ->
-        when (name.lowercase()) { "referer" -> ":http-referrer=$value"; else -> ":http-user-agent=$value" }
-    }.toTypedArray()
+    private val mediaOptions = desktopMediaOptions(source).toTypedArray()
+    /** Replaying from the end must not jump back to the resume point. */
+    private val replayOptions = desktopMediaOptions(source.copy(startPositionMs = 0)).toTypedArray()
     private var subtitlesAdded = false
     init {
         prepareDesktopRuntime()
-        factory = MediaPlayerFactory("--no-video-title-show", "--no-metadata-network-access", "--quiet")
+        // --http-reconnect: resume dropped CDN connections instead of failing the stream.
+        factory = MediaPlayerFactory("--no-video-title-show", "--no-metadata-network-access", "--quiet", "--http-reconnect")
         try {
             component = EmbeddedMediaPlayerComponent(factory, null, null, null, null)
             component.mediaPlayer().input().enableMouseInputHandling(false)
@@ -93,7 +94,7 @@ internal class DesktopPlayer(private val source: PlaybackSource) : PlayerControl
         if (state.value.ended) {
             publish { it.copy(ended = false, buffering = true) }
             subtitlesAdded = false
-            component.mediaPlayer().media().play(source.url, *mediaOptions)
+            component.mediaPlayer().media().play(source.url, *replayOptions)
         } else component.mediaPlayer().controls().play()
     }
     override fun pause() = command { component.mediaPlayer().controls().setPause(true) }

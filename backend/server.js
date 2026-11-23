@@ -7,6 +7,7 @@ const { createNotificationStore } = require('./notifications-store');
 const { createFirebaseSender } = require('./notifications-fcm');
 const { runDailyDigest } = require('./notifications-worker');
 const { createRuntimeConfigStore } = require('./runtime-config-store');
+const { parseTelemetry, clientIp, createTelemetryStore } = require('./telemetry');
 
 const MAX_BODY = 65536;
 function json(res, status, data) {
@@ -36,11 +37,13 @@ function createHandler({
   persistSandboxEvent,
   notificationStore: notificationStoreOverride,
   runtimeConfigStore: runtimeConfigStoreOverride,
+  telemetryStore: telemetryStoreOverride,
   runDailyDigest: runDailyDigestOverride,
   firebaseSender: firebaseSenderOverride,
 } = {}) {
   const notificationStore = notificationStoreOverride || createNotificationStore(env);
   const runtimeConfigStore = runtimeConfigStoreOverride || createRuntimeConfigStore(env);
+  const telemetryStore = telemetryStoreOverride || createTelemetryStore(env);
   const firebaseSender = firebaseSenderOverride || createFirebaseSender({ env });
   const dailyDigestWorker = runDailyDigestOverride || (options =>
     runDailyDigest({ ...options, store: notificationStore, sender: firebaseSender }));
@@ -152,6 +155,13 @@ function createHandler({
         } catch {
           return json(res, 503, { error: 'app_config_unavailable' });
         }
+      }
+      if (req.method === 'POST' && path === '/api/v1/telemetry') {
+        if (!/^application\/json\b/i.test(req.headers['content-type'] || '')) return json(res, 415, { error: 'unsupported_media_type' });
+        const event = parseTelemetry((await readBody(req)).toString('utf8'));
+        if (!event) return json(res, 400, { error: 'invalid_telemetry' });
+        try { await telemetryStore.record(event, clientIp(req)); } catch { return json(res, 503, { error: 'telemetry_unavailable' }); }
+        return json(res, 202, { status: 'accepted' });
       }
       if (req.method === 'GET' && path === '/updates.json') {
         const release = loadRelease(env);

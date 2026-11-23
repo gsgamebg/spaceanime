@@ -23,6 +23,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.anim.design.*
+import kotlinx.coroutines.launch
 
 @Composable
 fun MandatoryUpdateScreen(
@@ -33,6 +34,22 @@ fun MandatoryUpdateScreen(
 ) {
     val uri = LocalUriHandler.current
     var openError by remember { mutableStateOf(false) }
+    val installer = rememberUpdateInstaller()
+    val scope = rememberCoroutineScope()
+    var downloading by remember { mutableStateOf(false) }
+    var progress by remember { mutableStateOf(-1f) }
+    var installMessage by remember { mutableStateOf<String?>(null) }
+    fun startInstall() {
+        if (downloading) return
+        downloading = true; progress = -1f; installMessage = null
+        scope.launch {
+            installMessage = try {
+                installer.install(release) { value -> progress = value }
+            } catch (e: kotlinx.coroutines.CancellationException) { throw e }
+            catch (e: Exception) { "Falha no download: ${e.message ?: "tente novamente"}" }
+            finally { downloading = false }
+        }
+    }
     val motion = LocalSpaceMotionEnabled.current
     val transition = rememberInfiniteTransition(label = "update-glow")
     val pulseGlow by if (motion) {
@@ -213,7 +230,7 @@ fun MandatoryUpdateScreen(
                         ) {
                             SpaceIcon("shield-check", null, tint = Color(0xFF10B981), modifier = Modifier.size(16.dp))
                             Text(
-                                "Pacote verificado com SHA-256 e distribuído via HTTPS seguro.",
+                                "Baixado das Releases oficiais no GitHub e conferido com SHA-256 antes da instalação.",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = SpaceColors.onSurfaceVariant
                             )
@@ -226,9 +243,8 @@ fun MandatoryUpdateScreen(
                         verticalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
                         Button(
-                            onClick = {
-                                openError = runCatching { uri.openUri(release.url) }.isFailure
-                            },
+                            onClick = ::startInstall,
+                            enabled = !downloading,
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .height(52.dp),
@@ -244,7 +260,7 @@ fun MandatoryUpdateScreen(
                             ) {
                                 SpaceIcon("download", null, tint = Color.White, modifier = Modifier.size(20.dp))
                                 Text(
-                                    "Baixar Atualização Agora",
+                                    if (downloading) "Baixando e verificando…" else "Baixar e Instalar Agora",
                                     style = MaterialTheme.typography.titleMedium,
                                     fontWeight = FontWeight.Bold
                                 )
@@ -272,6 +288,15 @@ fun MandatoryUpdateScreen(
                                 )
                             }
                         }
+                    }
+
+                    if (downloading) {
+                        if (progress >= 0f) LinearProgressIndicator(progress = { progress }, modifier = Modifier.fillMaxWidth().height(6.dp).clip(RoundedCornerShape(999.dp)), color = SpaceColors.primary, trackColor = SpaceColors.surfaceVariant)
+                        else LinearProgressIndicator(Modifier.fillMaxWidth().height(6.dp).clip(RoundedCornerShape(999.dp)), color = SpaceColors.primary, trackColor = SpaceColors.surfaceVariant)
+                    }
+                    installMessage?.let { Text(it, color = SpaceColors.secondary, style = MaterialTheme.typography.bodySmall, textAlign = TextAlign.Center) }
+                    TextButton(onClick = { openError = runCatching { uri.openUri(release.url) }.isFailure }) {
+                        Text("Baixar pelo navegador", color = SpaceColors.onSurfaceVariant)
                     }
 
                     if (checking) {
@@ -307,7 +332,7 @@ fun MandatoryUpdateScreen(
 
                     // Instrução amigável
                     Text(
-                        "O download abre no navegador. Depois, instale o APK no Android ou extraia o pacote ZIP no Windows. Seus perfis, biblioteca e episódios salvos não serão perdidos.",
+                        "No Android o instalador abre sozinho após a verificação. No Windows o ZIP verificado fica em Downloads: extraia e abra o SpaceAnime.exe novo. Perfis, biblioteca e episódios salvos não serão perdidos.",
                         style = MaterialTheme.typography.bodySmall,
                         color = SpaceColors.onSurfaceVariant.copy(alpha = 0.8f),
                         textAlign = TextAlign.Center,

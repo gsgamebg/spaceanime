@@ -1,0 +1,77 @@
+name: Release
+# Runs only when the owner pushes a tag like v0.7.23. Assets follow the contract read by the app:
+#   SpaceAnime-<version>-<versionCode>-android.apk / SpaceAnime-<version>-<versionCode>-windows.zip
+# GitHub publishes a sha256 digest for each asset; the app refuses releases without it.
+on:
+  push:
+    tags: ['v*.*.*']
+permissions:
+  contents: write
+concurrency:
+  group: release
+  cancel-in-progress: false
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Read version
+        id: version
+        shell: pwsh
+        run: |
+          $source = Get-Content composeApp/src/commonMain/kotlin/app/anim/update/Updates.kt -Raw
+          $version = [regex]::Match($source, 'APP_VERSION = "([0-9.]+)"').Groups[1].Value
+          $code = [regex]::Match($source, 'APP_VERSION_CODE = ([0-9]+)').Groups[1].Value
+          if ("v$version" -ne $env:GITHUB_REF_NAME) { throw "Tag $env:GITHUB_REF_NAME does not match APP_VERSION $version" }
+          "version=$version" >> $env:GITHUB_OUTPUT
+          "code=$code" >> $env:GITHUB_OUTPUT
+      - name: Install SDK packages
+        shell: pwsh
+        run: sdkmanager 'platforms;android-35' 'build-tools;35.0.0'
+      - name: Build signed Android APK
+        shell: pwsh
+        env:
+          RELEASE_VERSION: ${{ steps.version.outputs.version }}
+          RELEASE_CODE: ${{ steps.version.outputs.code }}
+          SPACEANIME_KEYSTORE_BASE64: ${{ secrets.SPACEANIME_KEYSTORE_BASE64 }}
+          SPACEANIME_KEYSTORE_PASSWORD: ${{ secrets.SPACEANIME_KEYSTORE_PASSWORD }}
+          SPACEANIME_KEY_ALIAS: ${{ secrets.SPACEANIME_KEY_ALIAS }}
+          SPACEANIME_KEY_PASSWORD: ${{ secrets.SPACEANIME_KEY_PASSWORD }}
+          ADMOB_APP_ID: ${{ secrets.ADMOB_APP_ID }}
+          ADMOB_HOME_BANNER_ID: ${{ secrets.ADMOB_HOME_BANNER_ID }}
+          ADMOB_CATALOG_BANNER_ID: ${{ secrets.ADMOB_CATALOG_BANNER_ID }}
+        run: |
+          $keystore = Join-Path $env:RUNNER_TEMP 'spaceanime.jks'
+          [IO.File]::WriteAllBytes($keystore, [Convert]::FromBase64String($env:SPACEANIME_KEYSTORE_BASE64))
+          $env:SPACEANIME_KEYSTORE_FILE = $keystore
+          ./gradlew.bat :composeApp:desktopTest :composeApp:assembleRelease --console=plain
+          if ($LASTEXITCODE -ne 0) { throw "Android build failed" }
+          New-Item -ItemType Directory -Force out | Out-Null
+          Copy-Item composeApp/build/outputs/apk/release/composeApp-release.apk "out/SpaceAnime-$env:RELEASE_VERSION-$env:RELEASE_CODE-android.apk"
+          Remove-Item $keystore
+      - name: Build Windows package
+        shell: pwsh
+        env:
+          RELEASE_VERSION: ${{ steps.version.outputs.version }}
+          RELEASE_CODE: ${{ steps.version.outputs.code }}
+        run: |
+          ./scripts/install-player.ps1
+          ./gradlew.bat :composeApp:createDistributable --console=plain
+          if ($LASTEXITCODE -ne 0) { throw "Windows build failed" }
+          $stage = Join-Path $env:RUNNER_TEMP 'stage'
+          Copy-Item composeApp/build/compose/binaries/main/app/SpaceAnime "$stage/SpaceAnime" -Recurse
+          Copy-Item .tools/vlc/vlc-3.0.24 "$stage/SpaceAnime/vlc" -Recurse
+          Copy-Item composeApp/src/commonMain/composeResources/files/licenses "$stage/SpaceAnime/licenses" -Recurse
+          Copy-Item docs/WINDOWS-PORTATIL.md "$stage/LEIA-ME.md"
+          Compress-Archive -Path "$stage/SpaceAnime", "$stage/LEIA-ME.md" -DestinationPath "out/SpaceAnime-$env:RELEASE_VERSION-$env:RELEASE_CODE-windows.zip"
+      - name: Publish GitHub Release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create $env:GITHUB_REF_NAME (Get-ChildItem out/*).FullName --title "SpaceAnime $env:GITHUB_REF_NAME" --generate-notes --verify-tag

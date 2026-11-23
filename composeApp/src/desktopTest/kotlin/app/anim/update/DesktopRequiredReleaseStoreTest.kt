@@ -13,7 +13,7 @@ class DesktopRequiredReleaseStoreTest {
     private val release = AppRelease(
         "0.9.0",
         APP_VERSION_CODE + 1,
-        "https://spaceanime.onrender.com/downloads/space.apk",
+        "https://github.com/gsgamebg/spaceanime/releases/download/v0.8.0/SpaceAnime-0.8.0-99-android.apk",
         "a".repeat(64),
         "Atualização necessária",
     )
@@ -47,7 +47,7 @@ class DesktopRequiredReleaseStoreTest {
     @Test fun installedVersionCanReadAndClearItsNowStaleRequirement() = runBlocking {
         val file = File(root(), "required-release.json").apply {
             writeText(
-                """{"schemaVersion":1,"release":{"version":"0.8.0","code":$APP_VERSION_CODE,"url":"https://spaceanime.onrender.com/downloads/space.apk","sha256":"${"a".repeat(64)}","notes":"old requirement"}}""",
+                """{"schemaVersion":1,"release":{"version":"0.8.0","code":$APP_VERSION_CODE,"url":"https://github.com/gsgamebg/spaceanime/releases/download/v0.8.0/SpaceAnime-0.8.0-99-android.apk","sha256":"${"a".repeat(64)}","notes":"old requirement"}}""",
             )
         }
         val store = DesktopRequiredReleaseStore(file)

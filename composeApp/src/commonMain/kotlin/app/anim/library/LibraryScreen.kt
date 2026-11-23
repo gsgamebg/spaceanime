@@ -45,29 +45,6 @@ fun LibraryScreen(
     var loading by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
 
-    Text("Minha Lista", style = MaterialTheme.typography.headlineLarge, color = SpaceColors.onSurface)
-    Text("Animes favoritos, mangás seguidos e seu progresso neste dispositivo.", color = SpaceColors.onSurfaceVariant)
-    snapshot.error?.let { Text(it, color = SpaceColors.error) }
-    mangaSnapshot.error?.let { Text(it, color = SpaceColors.error) }
-    error?.let { Text(it, color = SpaceColors.error) }
-    if (loading) LinearProgressIndicator(Modifier.fillMaxWidth(), color = SpaceColors.primary)
-
-    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        LibraryFilter.entries.forEach { filter ->
-            GenreChip(filter.label, selectedFilter == filter) { selectedFilter = filter }
-        }
-    }
-
-    val visibleEntries = when (selectedFilter) {
-        LibraryFilter.All -> sections.all
-        LibraryFilter.Favorites -> sections.favorites
-        LibraryFilter.Continuing -> emptyList()
-    }
-    val continuingItems = when (selectedFilter) {
-        LibraryFilter.Continuing -> sections.continuing
-        else -> emptyList()
-    }
-
     fun resume(progress: WatchProgress) {
         loading = true
         error = null
@@ -106,40 +83,68 @@ fun LibraryScreen(
         }
     }
 
-    if (visibleEntries.isEmpty() && continuingItems.isEmpty() && snapshot.error == null && mangaSnapshot.error == null) {
-        when (selectedFilter) {
-            LibraryFilter.All -> EmptyStateCard("▤", "Sua lista está vazia", "Adicione animes aos favoritos ou siga mangás para encontrá-los aqui.")
-            LibraryFilter.Continuing -> EmptyStateCard("▷", "Nada para continuar", "Episódios não concluídos com posição salva aparecerão aqui.")
-            LibraryFilter.Favorites -> EmptyStateCard("♡", "Nenhum favorito ainda", "Adicione animes aos favoritos ou siga um mangá.")
-        }
-    }
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        Text("Minha Lista", style = MaterialTheme.typography.headlineLarge, color = SpaceColors.onSurface)
+        Text("Animes favoritos, mangás seguidos e seu progresso neste dispositivo.", color = SpaceColors.onSurfaceVariant)
+        snapshot.error?.let { Text(it, color = SpaceColors.error) }
+        mangaSnapshot.error?.let { Text(it, color = SpaceColors.error) }
+        error?.let { Text(it, color = SpaceColors.error) }
+        if (loading) LinearProgressIndicator(Modifier.fillMaxWidth(), color = SpaceColors.primary)
 
-    visibleEntries.forEach { entry ->
-        when (entry) {
-            is LibraryEntry.Anime -> AnimeLibraryCard(
-                entry = entry,
-                onOpen = { onOpen(entry.anime) },
-                onToggleFavorite = { library.toggleFavorite(entry.anime) },
-                onContinue = entry.progress?.let { progress -> { resume(progress) } },
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            LibraryFilter.entries.forEach { filter ->
+                GenreChip(filter.label, selectedFilter == filter) { selectedFilter = filter }
+            }
+        }
+
+        val visibleEntries = when (selectedFilter) {
+            LibraryFilter.All -> sections.all
+            LibraryFilter.Favorites -> sections.favorites
+            LibraryFilter.Continuing -> emptyList()
+        }
+        val continuingItems = when (selectedFilter) {
+            LibraryFilter.Continuing -> sections.continuing
+            else -> emptyList()
+        }
+
+        if (visibleEntries.isEmpty() && continuingItems.isEmpty() && snapshot.error == null && mangaSnapshot.error == null) {
+            when (selectedFilter) {
+                LibraryFilter.All -> EmptyStateCard("▤", "Sua lista está vazia", "Adicione animes aos favoritos ou siga mangás para encontrá-los aqui.")
+                LibraryFilter.Continuing -> EmptyStateCard("▷", "Nada para continuar", "Episódios não concluídos com posição salva aparecerão aqui.")
+                LibraryFilter.Favorites -> EmptyStateCard("♡", "Nenhum favorito ainda", "Adicione animes aos favoritos ou siga um mangá.")
+            }
+        }
+
+        visibleEntries.forEach { entry ->
+            when (entry) {
+                is LibraryEntry.Anime -> AnimeLibraryCard(
+                    entry = entry,
+                    onOpen = { onOpen(entry.anime) },
+                    onToggleFavorite = { library.toggleFavorite(entry.anime) },
+                    onContinue = entry.progress?.let { progress -> { resume(progress) } },
+                    enabled = !loading,
+                )
+                is LibraryEntry.Manga -> MangaLibraryCard(
+                    entry = entry,
+                    onOpen = { onOpenManga(entry.manga.title) },
+                    onUnfollow = { mangaFollows.toggleFollow(entry.manga) },
+                )
+            }
+        }
+
+        continuingItems.forEach { progress ->
+            val favorite = snapshot.isFavorite(progress.context.anime)
+            AnimeLibraryCard(
+                entry = LibraryEntry.Anime(progress.context.anime, progress, favorite),
+                onOpen = { onOpen(progress.context.anime) },
+                onToggleFavorite = { library.toggleFavorite(progress.context.anime) },
+                onContinue = { resume(progress) },
                 enabled = !loading,
             )
-            is LibraryEntry.Manga -> MangaLibraryCard(
-                entry = entry,
-                onOpen = { onOpenManga(entry.manga.title) },
-                onUnfollow = { mangaFollows.toggleFollow(entry.manga) },
-            )
         }
-    }
-
-    continuingItems.forEach { progress ->
-        val favorite = snapshot.isFavorite(progress.context.anime)
-        AnimeLibraryCard(
-            entry = LibraryEntry.Anime(progress.context.anime, progress, favorite),
-            onOpen = { onOpen(progress.context.anime) },
-            onToggleFavorite = { library.toggleFavorite(progress.context.anime) },
-            onContinue = { resume(progress) },
-            enabled = !loading,
-        )
     }
 }
 

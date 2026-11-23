@@ -219,7 +219,8 @@ internal class PortugueseSources(private val http: SourceTransport) : SourceRepo
         for (frame in frames.distinct().take(6)) {
             val address = frame.toHttpUrlOrNull() ?: continue
             if (!address.isHttps) continue
-            val hls = address.host == "api.anivideo.net" && address.encodedPath.endsWith("videohls.php")
+            val hls = address.host == "api.anivideo.net" &&
+                (address.encodedPath.endsWith("videohls.php") || Regex("/cdn/v\\d+\\.[\\w.-]+").matches(address.encodedPath))
             val blogger = address.host == "www.blogger.com" && address.encodedPath == "/video.g"
             val holder = address.host == base.toHttpUrlOrNull()!!.host && address.encodedPath.endsWith("/bg.mp4")
             if (!hls && !blogger && !holder) continue
