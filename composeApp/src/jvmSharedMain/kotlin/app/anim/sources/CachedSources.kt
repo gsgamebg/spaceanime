@@ -38,6 +38,7 @@ internal class CachedSources(private val delegate: SourceRepository, private val
         return result
     }
     override suspend fun streams(anime: AnimeResult, episode: Episode) = delegate.streams(anime, episode)
+    override suspend fun quickStream(anime: AnimeResult, episode: Episode) = delegate.quickStream(anime, episode)
     override suspend fun discover(sourceId: String) = delegate.discover(sourceId)
     override suspend fun animeForRecent(item: RecentEpisode) = delegate.animeForRecent(item)
 }

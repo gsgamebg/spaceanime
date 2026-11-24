@@ -25,7 +25,7 @@ fun UpdateCard(release: AppRelease?, checking: Boolean, message: String?, onChec
 
     SpacePanel(
         modifier = Modifier.fillMaxWidth(),
-        tonal = Color(0xFF0F172A),
+        tonal = Color(0xFF120B20),
         contentPadding = PaddingValues(20.dp)
     ) {
         Row(
@@ -58,7 +58,7 @@ fun UpdateCard(release: AppRelease?, checking: Boolean, message: String?, onChec
                 modifier = Modifier
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(12.dp))
-                    .background(Color(0xFF0A0F1E))
+                    .background(Color(0xFF08050F))
                     .border(1.dp, SpaceBorderColor, RoundedCornerShape(12.dp))
                     .padding(14.dp)
             ) {

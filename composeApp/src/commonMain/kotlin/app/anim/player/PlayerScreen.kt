@@ -26,6 +26,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.anim.design.SpaceColors
+import app.anim.design.SpaceAmethyst
 import app.anim.sources.Episode
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
@@ -159,10 +160,13 @@ fun PlayerScreen(
 
         LaunchedEffect(controller) {
             if (!resumeReady) {
-                val resumed = withTimeoutOrNull(20_000) {
-                    val available = controller.state.first { it.seekable && it.durationMs > 0 && !it.buffering || it.error != null }
+                // Players now open directly at the saved position (VLC :start-time / ExoPlayer start position),
+                // so this only confirms it — no second seek, and no wait for a "stable" buffer.
+                val resumed = withTimeoutOrNull(10_000) {
+                    val available = controller.state.first { it.seekable && it.durationMs > 0 || it.error != null }
                     if (available.error != null) return@withTimeoutOrNull false
                     val target = boundedPosition(attemptSource.startPositionMs, (available.durationMs - 1000).coerceAtLeast(0))
+                    if (kotlin.math.abs(available.positionMs - target) < 3000) return@withTimeoutOrNull true
                     controller.seekTo(target)
                     val result = controller.state.first { kotlin.math.abs(it.positionMs - target) < 2000 || it.error != null }
                     result.error == null
@@ -245,16 +249,13 @@ fun PlayerScreen(
                 if (key == null) false else { keyAction(key); true }
             }
         }) {
-            val panelHeight = (maxHeight * .48f).coerceAtMost(285.dp)
+            val panelHeight = (maxHeight * .34f).coerceAtMost(180.dp)
             Column(Modifier.fillMaxSize()) {
-                if (controlsVisible || !state.playing || state.error != null) Surface(color = Color(0xF00D0919), contentColor = SpaceColors.onSurface) {
-                    Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                        TextButton(onClick = onBack) { SpaceIcon("chevron-left", null); Text("Voltar") }
-                        TextButton(onClick = onHome, modifier = Modifier.heightIn(min = 48.dp)) {
-                            SpaceIcon("home", "Início")
-                            Text("Início")
-                        }
-                        Text(source.title, Modifier.weight(1f).padding(horizontal = 8.dp), style = MaterialTheme.typography.titleMedium, maxLines = 1)
+                if (controlsVisible || !state.playing || state.error != null) Surface(color = Color(0xF205030C), contentColor = SpaceColors.onSurface) {
+                    Row(Modifier.fillMaxWidth().padding(horizontal = 6.dp, vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+                        IconButton(onClick = onBack) { SpaceIcon("chevron-left", "Voltar aos episódios", tint = Color.White) }
+                        IconButton(onClick = onHome) { SpaceIcon("house", "Início", tint = Color.White) }
+                        Text(source.title, Modifier.weight(1f).padding(horizontal = 6.dp), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
                         IconButton(onClick = ::fullscreen) { SpaceIcon(if (fullScreen) "minimize" else "maximize", if (fullScreen) "Sair da tela cheia" else "Tela cheia", tint = Color.White) }
                     }
                 }
@@ -267,7 +268,7 @@ fun PlayerScreen(
                         OutlinedButton(onClick = onBack) { Text("Voltar aos episódios") }
                     }
                 }
-                if (showLoading && state.error == null) PlayerLoading(if (slowLoading) "O vídeo está demorando para carregar..." else if (state.positionMs == 0L) "Preparando seu episódio..." else "Carregando vídeo...", Modifier.fillMaxWidth().height(145.dp).background(Color(0xFF080611)))
+                if (showLoading && state.error == null) PlayerLoading(if (slowLoading) "O vídeo está demorando para carregar..." else if (state.positionMs == 0L) "Preparando seu episódio..." else "Carregando vídeo...", Modifier.fillMaxWidth().height(150.dp).background(Color(0xFF05030C)))
                 feedback?.let { Text(it, Modifier.fillMaxWidth().padding(4.dp), textAlign = androidx.compose.ui.text.style.TextAlign.Center, color = SpaceColors.secondary) }
                 if (state.seekable && (episodeMarkers.intro?.contains(state.positionMs, state.durationMs) == true || episodeMarkers.outro?.contains(state.positionMs, state.durationMs) == true)) {
                     Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp), horizontalArrangement = Arrangement.End) {
@@ -275,50 +276,46 @@ fun PlayerScreen(
                         if (episodeMarkers.outro?.contains(state.positionMs, state.durationMs) == true) OutlinedButton(onClick = { skip(episodeMarkers.outro) }) { Text("Pular encerramento  ››") }
                     }
                 }
-                if (controlsVisible || !state.playing || resumeFailed || state.error != null) Surface(color = Color(0xF00D0919)) {
-                    Column(Modifier.fillMaxWidth().heightIn(max = panelHeight).verticalScroll(rememberScrollState()).padding(horizontal = 18.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                        navigationError?.let { Text(it, color = SpaceColors.error) }
-                        markerLoadError?.let { Text(it, color = SpaceColors.error) }
-                        queue?.let { episodeQueue ->
-                            val previous = episodeQueue.previous()
-                            val next = nextEpisode
-                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                if (previous != null) {
-                                    OutlinedButton(
-                                        onClick = { onEpisodeChange(previous) },
-                                        enabled = !navigationLoading,
-                                    ) { Text("← Episódio anterior") }
-                                } else Spacer(Modifier.width(1.dp))
-                                if (next != null) {
-                                    OutlinedButton(
-                                        onClick = { onEpisodeChange(next) },
-                                        enabled = !navigationLoading,
-                                    ) { Text(if (navigationLoading) "Carregando…" else "Próximo episódio →") }
-                                }
-                            }
-                            if (state.ended && next != null && !autoPlayNext) {
-                                Button(
-                                    onClick = { onEpisodeChange(next) },
-                                    enabled = !navigationLoading,
-                                    modifier = Modifier.fillMaxWidth(),
-                                ) { Text("Assistir próximo episódio") }
-                            }
+                if (controlsVisible || !state.playing || resumeFailed || state.error != null) Surface(color = Color(0xF205030C), contentColor = Color.White) {
+                    // One compact control bar: progress on top, every action on a single row below.
+                    Column(Modifier.fillMaxWidth().heightIn(max = panelHeight).verticalScroll(rememberScrollState()).padding(horizontal = 12.dp, vertical = 4.dp)) {
+                        navigationError?.let { Text(it, color = SpaceColors.error, style = MaterialTheme.typography.bodySmall) }
+                        markerLoadError?.let { Text(it, color = SpaceColors.onSurfaceVariant, style = MaterialTheme.typography.bodySmall) }
+                        if (resumeFailed) Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text("Não foi possível retomar a posição salva.", color = SpaceColors.error, style = MaterialTheme.typography.bodySmall)
+                            TextButton(onClick = { resumeReady = true; resumeFailed = false }) { Text("Continuar daqui") }
                         }
-                        if (resumeFailed) { Text("Não foi possível retomar a posição salva.", color = SpaceColors.error); TextButton(onClick = { resumeReady = true; resumeFailed = false }) { Text("Continuar desta posição") } }
-                        Slider(value = seekPreview ?: (state.positionMs.toFloat() / state.durationMs.coerceAtLeast(1)).coerceIn(0f, 1f),
-                            onValueChange = { seekPreview = it; reveal() }, onValueChangeFinished = { seekPreview?.let { controller.seekTo((it * state.durationMs).toLong()) }; seekPreview = null; reveal() },
-                            enabled = state.seekable && state.durationMs > 0 && state.error == null,
-                            modifier = Modifier.fillMaxWidth().semantics { contentDescription = "Posição do vídeo" })
-                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                            Text(playbackTime(state.positionMs), style = MaterialTheme.typography.bodySmall)
-                            Text(if (state.durationMs > 0) playbackTime(state.durationMs) else "--:--", style = MaterialTheme.typography.bodySmall)
+                        val next = nextEpisode
+                        if (state.ended && next != null && !autoPlayNext) {
+                            Button(onClick = { onEpisodeChange(next) }, enabled = !navigationLoading, modifier = Modifier.fillMaxWidth().height(40.dp)) { Text("Assistir próximo episódio") }
                         }
-                        FlowRow(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text(playbackTime(state.positionMs), style = MaterialTheme.typography.labelSmall, color = Color(0xFFCBD5E1))
+                            Slider(
+                                value = seekPreview ?: (state.positionMs.toFloat() / state.durationMs.coerceAtLeast(1)).coerceIn(0f, 1f),
+                                onValueChange = { seekPreview = it; reveal() },
+                                onValueChangeFinished = { seekPreview?.let { controller.seekTo((it * state.durationMs).toLong()) }; seekPreview = null; reveal() },
+                                enabled = state.seekable && state.durationMs > 0 && state.error == null,
+                                colors = SliderDefaults.colors(thumbColor = SpaceAmethyst, activeTrackColor = SpaceAmethyst, inactiveTrackColor = Color(0x33FFFFFF)),
+                                modifier = Modifier.weight(1f).height(28.dp).semantics { contentDescription = "Posição do vídeo" },
+                            )
+                            Text(if (state.durationMs > 0) playbackTime(state.durationMs) else "--:--", style = MaterialTheme.typography.labelSmall, color = Color(0xFFCBD5E1))
+                        }
+                        FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                            val previous = queue?.previous()
+                            if (previous != null) IconButton(onClick = { onEpisodeChange(previous) }, enabled = !navigationLoading) { SpaceIcon("chevron-left", "Episódio anterior", tint = Color.White) }
                             IconButton(onClick = { seek(-10_000) }, enabled = state.seekable && state.error == null) { SpaceIcon("rewind", "Voltar 10 segundos", tint = Color.White) }
-                            IconButton(onClick = ::toggle, enabled = state.error == null) { SpaceIcon(if (state.playing) "pause" else "play", if (state.playing) "Pausar" else "Reproduzir", tint = Color.White) }
+                            FilledIconButton(onClick = ::toggle, enabled = state.error == null, colors = IconButtonDefaults.filledIconButtonColors(containerColor = SpaceAmethyst)) {
+                                SpaceIcon(if (state.playing) "pause" else "play", if (state.playing) "Pausar" else "Reproduzir", tint = Color.White, glow = false)
+                            }
                             IconButton(onClick = { seek(10_000) }, enabled = state.seekable && state.error == null) { SpaceIcon("forward", "Avançar 10 segundos", tint = Color.White) }
+                            if (next != null) IconButton(onClick = { onEpisodeChange(next) }, enabled = !navigationLoading) { SpaceIcon("chevron-right", if (navigationLoading) "Carregando próximo episódio" else "Próximo episódio", tint = Color.White) }
+                            Spacer(Modifier.width(8.dp))
                             IconButton(onClick = ::mute) { SpaceIcon(if (state.volume == 0f) "volume-off" else "volume", if (state.volume == 0f) "Ativar som" else "Silenciar", tint = Color.White) }
-                            Slider(state.volume, { controller.setVolume(it); reveal() }, modifier = Modifier.width(120.dp).semantics { contentDescription = "Volume" }, enabled = state.error == null)
+                            Slider(state.volume, { controller.setVolume(it); reveal() }, enabled = state.error == null,
+                                colors = SliderDefaults.colors(thumbColor = Color.White, activeTrackColor = Color.White, inactiveTrackColor = Color(0x33FFFFFF)),
+                                modifier = Modifier.width(96.dp).height(40.dp).semantics { contentDescription = "Volume" })
+                            Spacer(Modifier.width(8.dp))
                             SpeedMenu(state.speed, controller::setSpeed, openMenu == "speed") { openMenu = if (it) "speed" else null; reveal() }
                             TrackMenu("Áudio", state.audioTracks, state.selectedAudio, false, { it?.let(controller::selectAudio); reveal() }, openMenu == "audio") { openMenu = if (it) "audio" else null; reveal() }
                             TrackMenu("Legendas", state.subtitleTracks, state.selectedSubtitle, true, { controller.selectSubtitle(it); reveal() }, openMenu == "subs") { openMenu = if (it) "subs" else null; reveal() }
@@ -344,7 +341,7 @@ private fun SpeedMenu(currentSpeed: Float, onSelectSpeed: (Float) -> Unit, expan
         ) {
             Text(
                 "${currentSpeed}x",
-                Modifier.heightIn(min = 48.dp).padding(horizontal = 12.dp, vertical = 14.dp),
+                Modifier.heightIn(min = 40.dp).padding(horizontal = 10.dp, vertical = 11.dp),
                 color = Color.White,
                 fontSize = 12.sp,
                 fontWeight = FontWeight.Bold
@@ -374,7 +371,7 @@ private fun TrackMenu(label: String, tracks: List<PlayerTrack>, selected: String
         ) {
             Text(
                 "$label: ${tracks.firstOrNull { it.id == selected }?.label ?: if (allowOff) "off" else "auto"}",
-                Modifier.heightIn(min = 48.dp).padding(horizontal = 12.dp, vertical = 14.dp),
+                Modifier.heightIn(min = 40.dp).padding(horizontal = 10.dp, vertical = 11.dp),
                 color = Color.White,
                 fontSize = 11.sp,
                 fontWeight = FontWeight.Medium

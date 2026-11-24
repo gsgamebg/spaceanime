@@ -62,10 +62,9 @@ fun LibraryScreen(
                 }
                 val queueEpisodes = if (episodes.any { it.id == progress.context.episode.id }) episodes
                 else episodes + progress.context.episode
-                val streams = withTimeout(120_000) {
-                    repository.streams(anime, progress.context.episode)
-                }
-                val stream = streams.firstOrNull()?.source
+                val stream = withTimeout(120_000) {
+                    repository.quickStream(anime, progress.context.episode)
+                }?.source
                     ?: throw IllegalStateException("Nenhuma opção de reprodução foi encontrada.")
                 onPlay(
                     stream,
@@ -92,7 +91,7 @@ fun LibraryScreen(
         snapshot.error?.let { Text(it, color = SpaceColors.error) }
         mangaSnapshot.error?.let { Text(it, color = SpaceColors.error) }
         error?.let { Text(it, color = SpaceColors.error) }
-        if (loading) LinearProgressIndicator(Modifier.fillMaxWidth(), color = SpaceColors.primary)
+        if (loading) SpaceLoader(size = 120.dp)
 
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             LibraryFilter.entries.forEach { filter ->

@@ -48,37 +48,54 @@ import org.jetbrains.compose.resources.painterResource
 
 // ─── Paleta principal — SpaceAnime Dark ───────────────────────────────────────
 val SpaceColors = darkColorScheme(
-        primary            = Color(0xFF8B5CF6),
+        primary            = Color(0xFFA855F7),
         onPrimary          = Color(0xFFF8FAFC),
-        primaryContainer   = Color(0xFF1E1B4B),
+        primaryContainer   = Color(0xFF22123A),
         onPrimaryContainer = Color(0xFFEDE9FE),
-        secondary          = Color(0xFF06B6D4),
-        onSecondary        = Color(0xFF020617),
+        secondary          = Color(0xFF2DD4BF),
+        onSecondary        = Color(0xFF05030C),
         tertiary           = Color(0xFF6366F1),
         onTertiary         = Color(0xFFF8FAFC),
-        background         = Color(0xFF020617),
+        background         = Color(0xFF05030C),
         onBackground       = Color(0xFFF8FAFC),
-        surface            = Color(0xFF0F172A),
+        surface            = Color(0xFF120B20),
         onSurface          = Color(0xFFF8FAFC),
-        surfaceVariant     = Color(0xFF1E1B4B),
+        surfaceVariant     = Color(0xFF22123A),
         onSurfaceVariant   = Color(0xFF94A3B8),
-        outline            = Color(0x408B5CF6),
+        outline            = Color(0x40A855F7),
         error              = Color(0xFFFF6B8A),
 )
 
-val SpaceSidebarColor = Color(0xFF0A0F1E)
-val SpaceCardColor = Color(0xFF0F172A)
-val SpaceBorderColor = Color(0x408B5CF6)
-val SpaceHeaderBorder = Color(0x208B5CF6)
+val SpaceSidebarColor = Color(0xFF08050F)
+val SpaceCardColor = Color(0xFF120B20)
+val SpaceBorderColor = Color(0x40A855F7)
+val SpaceHeaderBorder = Color(0x20A855F7)
 val SpacePanelGradient = Brush.linearGradient(
-    listOf(Color(0xFF1E1B4B), Color(0xFF0F172A), Color(0xFF020617))
+    listOf(Color(0xFF22123A), Color(0xFF120B20), Color(0xFF05030C))
 )
-val SpaceAccentGradient = Brush.linearGradient(listOf(Color(0xFF8B5CF6), Color(0xFF6366F1), Color(0xFF06B6D4)))
+val SpaceAccentGradient = Brush.linearGradient(listOf(Color(0xFFA855F7), Color(0xFF6366F1), Color(0xFF2DD4BF)))
 val LocalSpaceMotionEnabled = staticCompositionLocalOf { false }
+
+// ─── Identidade 2026: preto do vazio, nébula ametista e lagoa teal (das referências VIP/Perfil) ───
+val SpaceVoid = Color(0xFF05030C)
+val SpaceNebula = Color(0xFF22123A)
+val SpaceAmethyst = Color(0xFFA855F7)
+val SpaceLagoon = Color(0xFF2DD4BF)
+val SpaceSkyBlue = Color(0xFF3B82F6)
+val SpaceGold = Color(0xFFF5C451)
+val SpacePlatinum = Color(0xFFCBD5E1)
+/** Rodapé/fundo das referências: preto que sobe para roxo. */
+val SpaceNebulaFooter = Brush.verticalGradient(listOf(Color.Transparent, Color(0xFF2A1048), Color(0xFF3B1361)))
+
+/** Glass panel: translucent fill + hairline gradient border (no heavy shadows). */
+fun Modifier.spaceGlass(shape: Shape = RoundedCornerShape(20.dp), tint: Color = Color(0xFF140C24)): Modifier =
+    this.clip(shape)
+        .background(Brush.verticalGradient(listOf(tint.copy(alpha = 0.86f), tint.copy(alpha = 0.66f))), shape)
+        .border(1.dp, Brush.linearGradient(listOf(Color(0x66A855F7), Color(0x142DD4BF), Color(0x40A855F7))), shape)
 
 // Cores dos avatares de perfil
 val ProfileColors = listOf(
-    Color(0xFF8B5CF6), Color(0xFF6366F1), Color(0xFF06B6D4), Color(0xFFA78BFA)
+    Color(0xFFA855F7), Color(0xFF6366F1), Color(0xFF2DD4BF), Color(0xFFA78BFA)
 )
 
 // ─── Tipografia ───────────────────────────────────────────────────────────────
@@ -105,7 +122,7 @@ return Typography(
     Box(
         modifier = modifier
             .clip(RoundedCornerShape(14.dp))
-            .background(Brush.radialGradient(listOf(Color(0xFF8B5CF6).copy(alpha = 0.4f), Color(0xFF1E1B4B).copy(alpha = 0.2f), Color.Transparent)))
+            .background(Brush.radialGradient(listOf(Color(0xFFA855F7).copy(alpha = 0.4f), Color(0xFF22123A).copy(alpha = 0.2f), Color.Transparent)))
             .border(1.5.dp, SpaceAccentGradient, RoundedCornerShape(14.dp)),
         contentAlignment = Alignment.Center
     ) {
@@ -143,9 +160,9 @@ return Typography(
         val c = Offset(size.width * .75f, size.height * .5f)
         val radius = size.minDimension * .42f
         // Glow ambiental mais intenso
-        drawCircle(Brush.radialGradient(listOf(Color(0xFF8B5CF6).copy(alpha = .6f), Color(0xFFA78BFA).copy(alpha = .3f), Color.Transparent), c, radius * 2.2f), radius * 2.2f, c)
+        drawCircle(Brush.radialGradient(listOf(Color(0xFFA855F7).copy(alpha = .6f), Color(0xFFA78BFA).copy(alpha = .3f), Color.Transparent), c, radius * 2.2f), radius * 2.2f, c)
         // Planeta principal com gradiente mais rico
-        drawCircle(Brush.linearGradient(listOf(Color(0xFF8B5CF6), Color(0xFFA78BFA), Color(0xFF1E1B4B))), radius, c)
+        drawCircle(Brush.linearGradient(listOf(Color(0xFFA855F7), Color(0xFFA78BFA), Color(0xFF22123A))), radius, c)
         // Anel mais brilhante
         rotate(-32f, c) {
             drawOval(Color(0xFFA78BFA).copy(alpha = .65f), Offset(c.x - radius * 1.7f, c.y - radius * .42f), Size(radius * 3.4f, radius * .84f), style = Stroke(2.8.dp.toPx()))
@@ -231,7 +248,7 @@ fun SpacePanel(
             } else {
                 Box(
                     Modifier.fillMaxSize()
-                        .background(Brush.linearGradient(listOf(Color(0xFF1E1B4B), Color(0xFF0F172A)))),
+                        .background(Brush.linearGradient(listOf(Color(0xFF22123A), Color(0xFF120B20)))),
                     contentAlignment = Alignment.Center
                 ) {
                     Text(title.take(2).uppercase(), style = MaterialTheme.typography.headlineMedium, color = SpaceColors.secondary)
@@ -240,7 +257,7 @@ fun SpacePanel(
             // Sombra/gradiente na base para leitura legível do título - mais suave
             Box(
                 Modifier.fillMaxWidth().fillMaxHeight(.6f).align(Alignment.BottomCenter)
-                    .background(Brush.verticalGradient(listOf(Color.Transparent, Color(0xCC020617), Color(0xF5020617))))
+                    .background(Brush.verticalGradient(listOf(Color.Transparent, Color(0xCC05030C), Color(0xF505030C))))
             )
             // Título na base
             Text(
@@ -376,7 +393,7 @@ fun StatPill(label: String, value: String, modifier: Modifier = Modifier) {
     Surface(
         modifier = modifier,
         shape = RoundedCornerShape(18.dp),
-        color = Color(0xFF0F172A),
+        color = Color(0xFF120B20),
         border = BorderStroke(1.dp, SpaceBorderColor),
     ) {
         Column(Modifier.padding(horizontal = 14.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
@@ -404,7 +421,7 @@ fun SpaceEmptyState(
 fun spaceShimmerBrush(): Brush {
     val motion = LocalSpaceMotionEnabled.current
     if (!motion) {
-        return Brush.linearGradient(listOf(Color(0xFF1E1B4B), Color(0xFF0F172A), Color(0xFF1E1B4B)))
+        return Brush.linearGradient(listOf(Color(0xFF22123A), Color(0xFF120B20), Color(0xFF22123A)))
     }
     val transition = rememberInfiniteTransition(label = "shimmer")
     val translateAnim by transition.animateFloat(
@@ -418,11 +435,11 @@ fun spaceShimmerBrush(): Brush {
     )
     return Brush.linearGradient(
         colors = listOf(
-            Color(0xFF0F172A),
-            Color(0xFF1E1B4B),
+            Color(0xFF120B20),
+            Color(0xFF22123A),
             Color(0xFF3B2D68).copy(alpha = 0.65f),
-            Color(0xFF1E1B4B),
-            Color(0xFF0F172A),
+            Color(0xFF22123A),
+            Color(0xFF120B20),
         ),
         start = Offset(translateAnim - 450f, translateAnim - 450f),
         end = Offset(translateAnim, translateAnim)

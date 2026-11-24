@@ -33,3 +33,10 @@ test('feed and redirects are versioned and unavailable without complete configur
   assert.equal((await fetch(`${base}/downloads/36-android.zip`,{redirect:'manual'})).status,404);
  } finally { await new Promise(resolve=>server.close(resolve)); }
 });
+
+test('official gsgamebg/spaceanime release assets are accepted for the legacy (0.7.22) feed', () => {
+  const { safeArtifact } = require('./update-feed');
+  const apk = 'https://github.com/gsgamebg/spaceanime/releases/download/v0.7.23/SpaceAnime-0.7.23-39-android.apk';
+  assert.equal(safeArtifact(apk, 'android'), apk);
+  assert.equal(safeArtifact('https://github.com/gsgamebg/spaceanime-evil/releases/download/v1/a.apk', 'android'), null);
+});

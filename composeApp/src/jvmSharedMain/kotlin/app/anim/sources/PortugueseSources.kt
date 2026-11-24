@@ -208,45 +208,87 @@ internal class PortugueseSources(private val http: SourceTransport) : SourceRepo
         }.distinctBy { it.id }.sortedBy { it.number }
     }
 
-    override suspend fun streams(anime: AnimeResult, episode: Episode): List<StreamOption> {
+    private data class StreamFrames(val base: String, val watchUrl: String, val frames: List<String>)
+
+    private suspend fun streamFrames(anime: AnimeResult, episode: Episode): StreamFrames {
         val base = base(anime.sourceId)
         val watch = http.fetch(checkedPage(episode.url, base), "$base/")
         val document = Jsoup.parse(watch.text, watch.url)
         val frames = if (anime.sourceId == "anitube") document.select("#blog2 iframe[src], #blog1 iframe[src]").map { it.absUrl("src") }
             else document.select("iframe[src]").map { it.absUrl("src") }
-        val results = mutableListOf<StreamOption>()
-        val failures = mutableListOf<String>()
-        for (frame in frames.distinct().take(6)) {
-            val address = frame.toHttpUrlOrNull() ?: continue
-            if (!address.isHttps) continue
-            val hls = address.host == "api.anivideo.net" &&
-                (address.encodedPath.endsWith("videohls.php") || Regex("/cdn/v\\d+\\.[\\w.-]+").matches(address.encodedPath))
-            val blogger = address.host == "www.blogger.com" && address.encodedPath == "/video.g"
-            val holder = address.host == base.toHttpUrlOrNull()!!.host && address.encodedPath.endsWith("/bg.mp4")
-            if (!hls && !blogger && !holder) continue
-            try {
-                if (hls) {
-                    val direct = address.queryParameter("d")?.takeIf { it.toHttpUrlOrNull()?.isHttps == true }
-                        ?: extractFile(http.fetch(frame, watch.url).text)
-                        ?: throw SourceException("O servidor HLS não informou um vídeo.")
-                    val referrer = "${address.scheme}://${address.host}/"
-                    results += StreamOption("Servidor principal · automático", PlaybackSource("${anime.title} · ${episode.title}", direct, headers = mapOf("Referer" to referrer)))
-                } else {
-                    val bloggerUrl = if (blogger) frame else {
-                        val page = http.fetch(frame, watch.url)
-                        Jsoup.parse(page.text, page.url).select("iframe[src]").map { it.absUrl("src") }
-                            .firstOrNull { it.toHttpUrlOrNull()?.let { u -> u.isHttps && u.host == "www.blogger.com" && u.encodedPath == "/video.g" } == true }
-                            ?: throw SourceException("O servidor alternativo não informou um vídeo Blogger.")
-                    }
-                    for ((url, quality) in bloggerStreams(bloggerUrl)) {
-                        results += StreamOption("Blogger · $quality", PlaybackSource("${anime.title} · ${episode.title}", url, headers = mapOf("Referer" to bloggerUrl, "User-Agent" to "Mozilla/5.0 Anim/0.3")))
-                    }
+        val supported = frames.distinct().take(6).filter { frameKind(it, base) != null }
+        // Main HLS server first: adaptive and the fastest to start.
+        return StreamFrames(base, watch.url, supported.sortedBy { if (frameKind(it, base) == FrameKind.Hls) 0 else 1 })
+    }
+
+    private enum class FrameKind { Hls, Blogger, Holder }
+
+    private fun frameKind(frame: String, base: String): FrameKind? {
+        val address = frame.toHttpUrlOrNull() ?: return null
+        if (!address.isHttps) return null
+        return when {
+            address.host == "api.anivideo.net" &&
+                (address.encodedPath.endsWith("videohls.php") || Regex("""/cdn/v\d+\.[\w.-]+""").matches(address.encodedPath)) -> FrameKind.Hls
+            address.host == "www.blogger.com" && address.encodedPath == "/video.g" -> FrameKind.Blogger
+            address.host == base.toHttpUrlOrNull()!!.host && address.encodedPath.endsWith("/bg.mp4") -> FrameKind.Holder
+            else -> null
+        }
+    }
+
+    private suspend fun resolveFrame(anime: AnimeResult, episode: Episode, frame: String, ctx: StreamFrames): List<StreamOption> {
+        val address = frame.toHttpUrlOrNull()!!
+        return when (frameKind(frame, ctx.base)) {
+            FrameKind.Hls -> {
+                val direct = address.queryParameter("d")?.takeIf { it.toHttpUrlOrNull()?.isHttps == true }
+                    ?: extractFile(http.fetch(frame, ctx.watchUrl).text)
+                    ?: throw SourceException("O servidor HLS não informou um vídeo.")
+                val referrer = "${address.scheme}://${address.host}/"
+                listOf(StreamOption("Servidor principal · automático", PlaybackSource("${anime.title} · ${episode.title}", direct, headers = mapOf("Referer" to referrer))))
+            }
+            FrameKind.Blogger, FrameKind.Holder -> {
+                val bloggerUrl = if (frameKind(frame, ctx.base) == FrameKind.Blogger) frame else {
+                    val page = http.fetch(frame, ctx.watchUrl)
+                    Jsoup.parse(page.text, page.url).select("iframe[src]").map { it.absUrl("src") }
+                        .firstOrNull { it.toHttpUrlOrNull()?.let { u -> u.isHttps && u.host == "www.blogger.com" && u.encodedPath == "/video.g" } == true }
+                        ?: throw SourceException("O servidor alternativo não informou um vídeo Blogger.")
                 }
-            } catch (cancelled: CancellationException) { throw cancelled }
-            catch (failure: Exception) { failures += failure.message ?: "Servidor indisponível." }
+                bloggerStreams(bloggerUrl).map { (url, quality) ->
+                    StreamOption("Blogger · $quality", PlaybackSource("${anime.title} · ${episode.title}", url, headers = mapOf("Referer" to bloggerUrl, "User-Agent" to "Mozilla/5.0 Anim/0.3")))
+                }
+            }
+            null -> emptyList()
+        }
+    }
+
+    private fun attachContext(options: List<StreamOption>, anime: AnimeResult, episode: Episode) =
+        options.distinctBy { it.source.url }.map { it.copy(source = it.source.copy(context = EpisodeContext(anime, episode))) }
+
+    /** All servers, resolved in parallel (total time = slowest server, not the sum). */
+    override suspend fun streams(anime: AnimeResult, episode: Episode): List<StreamOption> {
+        val ctx = streamFrames(anime, episode)
+        val failures = mutableListOf<String>()
+        val results = coroutineScope {
+            ctx.frames.map { frame -> async {
+                try { resolveFrame(anime, episode, frame, ctx) }
+                catch (cancelled: CancellationException) { throw cancelled }
+                catch (failure: Exception) { synchronized(failures) { failures += failure.message ?: "Servidor indisponível." }; emptyList() }
+            } }.awaitAll().flatten()
         }
         if (results.isEmpty()) throw SourceException(failures.firstOrNull() ?: "Nenhum servidor compatível encontrado neste episódio.")
-        return results.distinctBy { it.source.url }.map { it.copy(source = it.source.copy(context = EpisodeContext(anime, episode))) }
+        return attachContext(results, anime, episode)
+    }
+
+    /** Starts playback with the first server that works (main HLS first) instead of waiting for all of them. */
+    override suspend fun quickStream(anime: AnimeResult, episode: Episode): StreamOption? {
+        val ctx = streamFrames(anime, episode)
+        var lastFailure: String? = null
+        for (frame in ctx.frames) {
+            val options = try { resolveFrame(anime, episode, frame, ctx) }
+                catch (cancelled: CancellationException) { throw cancelled }
+                catch (failure: Exception) { lastFailure = failure.message; emptyList() }
+            preferredStream(attachContext(options, anime, episode))?.let { return it }
+        }
+        throw SourceException(lastFailure ?: "Nenhum servidor compatível encontrado neste episódio.")
     }
 
     internal fun extractFile(html: String): String? {

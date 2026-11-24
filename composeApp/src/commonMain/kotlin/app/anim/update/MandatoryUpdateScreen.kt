@@ -80,9 +80,9 @@ fun MandatoryUpdateScreen(
                     .background(
                         Brush.verticalGradient(
                             listOf(
-                                Color(0xCC020617),
-                                Color(0xF2020617),
-                                Color(0xFF020617)
+                                Color(0xCC05030C),
+                                Color(0xF205030C),
+                                Color(0xFF05030C)
                             )
                         )
                     )
@@ -153,7 +153,7 @@ fun MandatoryUpdateScreen(
                     // Card de detalhes com comparativo de versões
                     SpacePanel(
                         modifier = Modifier.fillMaxWidth(),
-                        tonal = Color(0xFF0F172A),
+                        tonal = Color(0xFF120B20),
                         contentPadding = PaddingValues(20.dp)
                     ) {
                         Row(
@@ -210,7 +210,7 @@ fun MandatoryUpdateScreen(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .clip(RoundedCornerShape(12.dp))
-                                    .background(Color(0xFF0A0F1E))
+                                    .background(Color(0xFF08050F))
                                     .border(1.dp, SpaceBorderColor, RoundedCornerShape(12.dp))
                                     .padding(14.dp)
                             ) {

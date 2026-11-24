@@ -54,16 +54,16 @@ import kotlinx.coroutines.withTimeout
 // ─── Home visual tokens ──────────────────────────────────────────────────────
 // The home screen keeps the chrome quiet: one neutral surface ramp, hairline
 // borders and a single violet accent. Artwork carries the color.
-private val HomeSurface = Color(0xFF0F172A)
-private val HomeSurfaceHigh = Color(0xFF1E1B4B)
-private val HomeHairline = Color(0x408B5CF6)
+private val HomeSurface = Color(0xFF120B20)
+private val HomeSurfaceHigh = Color(0xFF22123A)
+private val HomeHairline = Color(0x40A855F7)
 private val HomeTextPrimary = Color(0xFFF8FAFC)
 private val HomeTextSecondary = Color(0xFFCBD5E1)
 private val HomeTextMuted = Color(0xFF94A3B8)
-private val HomeAccent = Color(0xFF8B5CF6)
-private val HomeCta = Color(0xFF8B5CF6)
+private val HomeAccent = Color(0xFFA855F7)
+private val HomeCta = Color(0xFFA855F7)
 private val HomeCtaText = Color.White
-private val HomeScrim = Brush.verticalGradient(listOf(Color.Transparent, Color(0xCC020617)))
+private val HomeScrim = Brush.verticalGradient(listOf(Color.Transparent, Color(0xCC05030C)))
 private val HomeCardShape = RoundedCornerShape(20.dp)
 private val HomeInnerShape = RoundedCornerShape(14.dp)
 
@@ -77,6 +77,7 @@ internal fun SpaceHomeScreen(
     categorySlug: String,
     onCategory: (String) -> Unit,
     onTrending: () -> Unit,
+    onReleases: () -> Unit,
     onSearch: () -> Unit,
     onLibrary: () -> Unit,
     onOpenAnime: (AnimeResult) -> Unit,
@@ -109,7 +110,10 @@ internal fun SpaceHomeScreen(
         while (true) { discovery.refresh(); delay(60_000) }
     }
 
-    val featured = remember(disco.pages) { disco.pages.flatMap { it.featured }.distinctBy { "${it.sourceId}:${it.id}:${it.dubbed}" }.take(12) }
+    val allFeatured = remember(disco.pages) { disco.pages.flatMap { it.featured }.distinctBy { "${it.sourceId}:${it.id}:${it.dubbed}" } }
+    val featured = remember(allFeatured) { allFeatured.take(12) }
+    val allDubbed = remember(disco.pages) { disco.pages.flatMap { it.dubbed + it.featured.filter { a -> a.dubbed } }.distinctBy { "${it.sourceId}:${it.id}" } }
+    var showAllDubbed by remember { mutableStateOf(false) }
     val recent = remember(disco.pages) {
         val lists = disco.pages.map { it.recent }
         val interleaved = (0 until (lists.maxOfOrNull { it.size } ?: 0))
@@ -160,12 +164,12 @@ internal fun SpaceHomeScreen(
             HomeNavFocus.Releases -> "Lançamentos recentes e episódios atualizados direto do catálogo."
             HomeNavFocus.Categories -> "Escolha um gênero e encontre sua próxima história."
         }
-        Text(
-            summaryText,
-            color = HomeTextMuted,
-            style = MaterialTheme.typography.bodyMedium,
-            modifier = Modifier.widthIn(max = 720.dp),
-        )
+        when (focus) {
+            HomeNavFocus.Home -> Text(summaryText, color = HomeTextMuted, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.widthIn(max = 720.dp))
+            HomeNavFocus.Trending -> ScreenHero("Em alta", summaryText, "flame")
+            HomeNavFocus.Releases -> ScreenHero("Lançamentos da semana", summaryText, "calendar-days")
+            HomeNavFocus.Categories -> ScreenHero("Categorias", summaryText, "grid")
+        }
 
         if (disco.loading && disco.pages.isEmpty()) {
             HomeSkeleton(280.dp)
@@ -189,7 +193,14 @@ internal fun SpaceHomeScreen(
             }
         }
         if (focus == HomeNavFocus.Categories) GenreExplorer(repository, categorySlug, onCategory, onOpenAnime)
-        if (focus == HomeNavFocus.Trending) TrendingExplorer(repository, onOpenAnime)
+        if (focus == HomeNavFocus.Trending) {
+            // Shown at once from the already-loaded discovery data; AniList trends complete it below.
+            if (featured.isNotEmpty()) {
+                HomeSectionHeader(title = "Em destaque nos servidores", subtitle = "${allFeatured.size} títulos atualizados agora")
+                PosterCardGrid(allFeatured, onOpenAnime)
+            }
+            TrendingExplorer(repository, onOpenAnime, grid = true)
+        }
 
         if (continuing.isNotEmpty() && focus == HomeNavFocus.Home) {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -264,8 +275,8 @@ internal fun SpaceHomeScreen(
                             colors = OutlinedTextFieldDefaults.colors(
                                 focusedBorderColor = SpaceColors.primary,
                                 unfocusedBorderColor = SpaceBorderColor,
-                                focusedContainerColor = Color(0xFF0F172A),
-                                unfocusedContainerColor = Color(0xFF0F172A),
+                                focusedContainerColor = Color(0xFF120B20),
+                                unfocusedContainerColor = Color(0xFF120B20),
                                 focusedTextColor = Color.White,
                                 unfocusedTextColor = Color.White,
                                 cursorColor = SpaceColors.secondary,
@@ -289,9 +300,9 @@ internal fun SpaceHomeScreen(
                 compact = compact,
                 action = {
                     if (focus == HomeNavFocus.Home) {
-                        TextButton(onClick = onSearch) {
+                        TextButton(onClick = onReleases) {
                             Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
-                                Text("Explorar catálogo", color = SpaceColors.secondary, style = MaterialTheme.typography.labelLarge)
+                                Text("Ver todos os episódios", color = SpaceColors.secondary, style = MaterialTheme.typography.labelLarge)
                                 SpaceIcon("arrow-right", null, tint = SpaceColors.secondary, modifier = Modifier.size(14.dp))
                             }
                         }
@@ -349,14 +360,15 @@ internal fun SpaceHomeScreen(
                 compact = compact,
                 onClick = onOpenAnime,
                 action = {
-                    TextButton(onClick = onSearch) {
+                    TextButton(onClick = { showAllDubbed = !showAllDubbed }) {
                         Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Text("Ver tudo", color = SpaceColors.secondary, style = MaterialTheme.typography.labelLarge)
+                            Text(if (showAllDubbed) "Mostrar menos" else "Ver todos (${allDubbed.size})", color = SpaceColors.secondary, style = MaterialTheme.typography.labelLarge)
                             SpaceIcon("arrow-right", null, tint = SpaceColors.secondary, modifier = Modifier.size(14.dp))
                         }
                     }
                 }
             )
+            if (showAllDubbed) PosterCardGrid(allDubbed, onOpenAnime)
         }
 
         disco.message?.let { message -> HomeNotice(message) }
@@ -475,7 +487,7 @@ private fun HomeMeta(text: String, accent: Color, modifier: Modifier = Modifier)
     Row(
         modifier
             .clip(RoundedCornerShape(999.dp))
-            .background(Color(0xCC0F172A))
+            .background(Color(0xCC120B20))
             .border(1.dp, HomeHairline, RoundedCornerShape(999.dp))
             .padding(horizontal = 12.dp, vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -683,14 +695,14 @@ private fun HomeHero(
                     Box(
                         Modifier.matchParentSize().background(
                             Brush.horizontalGradient(
-                                listOf(Color(0xF2020617), Color(0xD90F172A), Color(0x400F172A))
+                                listOf(Color(0xF205030C), Color(0xD9120B20), Color(0x40120B20))
                             )
                         )
                     )
                     Box(
                         Modifier.matchParentSize().background(
                             Brush.verticalGradient(
-                                listOf(Color(0x33020617), Color(0x99020617), Color(0xF2020617))
+                                listOf(Color(0x3305030C), Color(0x9905030C), Color(0xF205030C))
                             )
                         )
                     )
@@ -771,7 +783,7 @@ private fun HomeHero(
                                 .align(Alignment.TopEnd)
                                 .padding(if (narrow) 16.dp else 20.dp)
                                 .clip(RoundedCornerShape(999.dp))
-                                .background(Color(0xB3020617))
+                                .background(Color(0xB305030C))
                                 .border(1.dp, HomeHairline, RoundedCornerShape(999.dp))
                                 .padding(horizontal = 10.dp, vertical = 6.dp),
                             verticalAlignment = Alignment.CenterVertically,
@@ -858,7 +870,7 @@ private fun HomePosterCard(anime: AnimeResult, modifier: Modifier = Modifier, on
                     .border(1.dp, borderColor, RoundedCornerShape(16.dp))
             ) {
                 Artwork(anime.image, anime.title, Modifier.fillMaxSize())
-                Box(Modifier.matchParentSize().background(Brush.verticalGradient(listOf(Color.Transparent, Color(0x66020617)))))
+                Box(Modifier.matchParentSize().background(Brush.verticalGradient(listOf(Color.Transparent, Color(0x6605030C)))))
                 HomeMeta(
                     if (anime.dubbed) "Dublado" else "Legendado",
                     if (anime.dubbed) SpaceColors.tertiary else SpaceColors.secondary,
@@ -928,7 +940,7 @@ private fun RecentRail(
                                     modifier = Modifier.fillMaxSize(),
                                 )
                             }
-                            Box(Modifier.matchParentSize().background(Brush.verticalGradient(listOf(Color.Transparent, Color(0x99020617)))))
+                            Box(Modifier.matchParentSize().background(Brush.verticalGradient(listOf(Color.Transparent, Color(0x9905030C)))))
                             // Badge de episódio no topo esquerdo
                             Box(
                                 Modifier

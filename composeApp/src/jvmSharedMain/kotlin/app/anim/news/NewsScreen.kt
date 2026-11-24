@@ -1,5 +1,7 @@
 package app.anim.news
 
+import app.anim.design.ScreenHero
+import app.anim.design.SpaceLoader
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.ScrollState
 import androidx.compose.ui.platform.LocalUriHandler
@@ -167,8 +169,7 @@ private suspend fun loadBody(slug: String): String = withContext(Dispatchers.IO)
                 }
             }
         } else {
-            Text("Notícias", style = MaterialTheme.typography.headlineMedium, color = Color.White, fontWeight = FontWeight.Bold)
-            Text("Acompanhe as novidades do universo anime e mangá.", color = SpaceColors.onSurfaceVariant)
+            ScreenHero("Notícias", "As novidades do universo anime e mangá, atualizadas ao longo do dia.", "newspaper")
             OutlinedTextField(value = query, onValueChange = { query = it.take(120) }, modifier = Modifier.fillMaxWidth(), label = { Text("Buscar notícias") }, singleLine = true,
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search), keyboardActions = KeyboardActions(onSearch = { requested = query.trim(); retry++ }))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -176,7 +177,7 @@ private suspend fun loadBody(slug: String): String = withContext(Dispatchers.IO)
                 TextButton(onClick = { retry++ }) { Text("Atualizar") }
             }
             when {
-                loading -> LinearProgressIndicator(Modifier.fillMaxWidth())
+                loading -> SpaceLoader("Carregando notícias…")
                 error -> { Text("Não foi possível atualizar as notícias."); TextButton(onClick = { retry++ }) { Text("Tentar novamente") } }
                 else -> {
                     if (partial) Text("Algumas notícias podem não estar disponíveis agora.", color = SpaceColors.onSurfaceVariant)

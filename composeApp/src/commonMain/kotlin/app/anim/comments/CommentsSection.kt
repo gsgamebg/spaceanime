@@ -35,8 +35,8 @@ import kotlinx.coroutines.launch
 
         Surface(
             shape = RoundedCornerShape(12.dp),
-            color = Color(0xFF1E1B4B),
-            border = BorderStroke(1.dp, Color(0x338B5CF6)),
+            color = Color(0xFF22123A),
+            border = BorderStroke(1.dp, Color(0x33A855F7)),
             modifier = Modifier.fillMaxWidth()
         ) {
             Row(
@@ -44,7 +44,7 @@ import kotlinx.coroutines.launch
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                Text("✦", fontSize = 16.sp, color = Color(0xFF06B6D4))
+                Text("✦", fontSize = 16.sp, color = Color(0xFF2DD4BF))
                 Text(
                     "Prévia local: seus comentários ficam salvos neste perfil para você acompanhar suas reações.",
                     style = MaterialTheme.typography.bodySmall,
@@ -56,8 +56,8 @@ import kotlinx.coroutines.launch
         // ── Campo de novo comentário ───────────────────────────────────────────────
         Surface(
             shape = RoundedCornerShape(20.dp),
-            color = Color(0xFF0F172A),
-            border = BorderStroke(1.dp, Color(0x338B5CF6)),
+            color = Color(0xFF120B20),
+            border = BorderStroke(1.dp, Color(0x33A855F7)),
             modifier = Modifier.fillMaxWidth()
         ) {
             Row(
@@ -78,10 +78,10 @@ import kotlinx.coroutines.launch
                         shape = RoundedCornerShape(14.dp),
                         supportingText = { Text("${draft.length}/1000 · $author", color = Color(0xFF64748B)) },
                         colors = OutlinedTextFieldDefaults.colors(
-                            focusedContainerColor = Color(0xFF020617),
-                            unfocusedContainerColor = Color(0xFF020617),
-                            focusedBorderColor = Color(0xFF8B5CF6),
-                            unfocusedBorderColor = Color(0x338B5CF6),
+                            focusedContainerColor = Color(0xFF05030C),
+                            unfocusedContainerColor = Color(0xFF05030C),
+                            focusedBorderColor = Color(0xFFA855F7),
+                            unfocusedBorderColor = Color(0x33A855F7),
                             focusedTextColor = Color(0xFFF8FAFC),
                             unfocusedTextColor = Color(0xFFF8FAFC),
                         )
@@ -104,7 +104,7 @@ import kotlinx.coroutines.launch
                                 }
                             },
                             shape = RoundedCornerShape(12.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF8B5CF6)),
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFA855F7)),
                         ) { Text("Comentar", fontWeight = FontWeight.SemiBold, color = Color.White) }
                     }
                 }
@@ -117,8 +117,8 @@ import kotlinx.coroutines.launch
         if (comments.isEmpty()) {
             Surface(
                 shape = RoundedCornerShape(16.dp),
-                color = Color(0xFF0F172A),
-                border = BorderStroke(1.dp, Color(0x228B5CF6)),
+                color = Color(0xFF120B20),
+                border = BorderStroke(1.dp, Color(0x22A855F7)),
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Column(
@@ -148,8 +148,8 @@ import kotlinx.coroutines.launch
                 var revealed by remember { mutableStateOf(false) }
                 Surface(
                     shape = RoundedCornerShape(16.dp),
-                    color = Color(0xFF0F172A),
-                    border = BorderStroke(1.dp, Color(0x228B5CF6)),
+                    color = Color(0xFF120B20),
+                    border = BorderStroke(1.dp, Color(0x22A855F7)),
                     modifier = Modifier.fillMaxWidth(),
                 ) {
                     Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -167,12 +167,12 @@ import kotlinx.coroutines.launch
                             Surface(
                                 onClick = { revealed = true },
                                 shape = RoundedCornerShape(10.dp),
-                                color = Color(0xFF1E1B4B),
-                                border = BorderStroke(1.dp, Color(0x338B5CF6))
+                                color = Color(0xFF22123A),
+                                border = BorderStroke(1.dp, Color(0x33A855F7))
                             ) {
                                 Row(Modifier.fillMaxWidth().padding(12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                                     Text("👁", fontSize = 16.sp)
-                                    Text("Toque para revelar o spoiler", color = Color(0xFF06B6D4), style = MaterialTheme.typography.bodySmall)
+                                    Text("Toque para revelar o spoiler", color = Color(0xFF2DD4BF), style = MaterialTheme.typography.bodySmall)
                                 }
                             }
                         } else {
@@ -190,8 +190,8 @@ import kotlinx.coroutines.launch
             }
         }
         if (comments.size > 10) Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            TextButton(enabled = current > 0, onClick = { page = current - 1 }) { Text("← Anterior", color = Color(0xFF06B6D4)) }
-            TextButton(enabled = (current + 1) * 10 < comments.size, onClick = { page = current + 1 }) { Text("Próxima →", color = Color(0xFF06B6D4)) }
+            TextButton(enabled = current > 0, onClick = { page = current - 1 }) { Text("← Anterior", color = Color(0xFF2DD4BF)) }
+            TextButton(enabled = (current + 1) * 10 < comments.size, onClick = { page = current + 1 }) { Text("Próxima →", color = Color(0xFF2DD4BF)) }
         }
     }
 }

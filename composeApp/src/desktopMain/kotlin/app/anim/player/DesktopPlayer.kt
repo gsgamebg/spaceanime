@@ -17,6 +17,9 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.CompletableFuture
 
+/** --http-reconnect: resume dropped CDN connections instead of failing the stream. */
+internal val VLC_FACTORY_ARGS = arrayOf("--no-video-title-show", "--no-metadata-network-access", "--quiet", "--http-reconnect")
+
 internal class DesktopPlayer(private val source: PlaybackSource) : PlayerController {
     private val mutable = MutableStateFlow(PlaybackState())
     override val state = mutable.asStateFlow()
@@ -34,7 +37,7 @@ internal class DesktopPlayer(private val source: PlaybackSource) : PlayerControl
     init {
         prepareDesktopRuntime()
         // --http-reconnect: resume dropped CDN connections instead of failing the stream.
-        factory = MediaPlayerFactory("--no-video-title-show", "--no-metadata-network-access", "--quiet", "--http-reconnect")
+        factory = MediaPlayerFactory(*VLC_FACTORY_ARGS)
         try {
             component = EmbeddedMediaPlayerComponent(factory, null, null, null, null)
             component.mediaPlayer().input().enableMouseInputHandling(false)

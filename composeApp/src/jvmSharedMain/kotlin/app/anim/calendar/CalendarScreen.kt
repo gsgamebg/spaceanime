@@ -86,7 +86,7 @@ actual fun CalendarScreen(onSearch: (String) -> Unit) {
             }
         }
         when {
-            loading -> { LinearProgressIndicator(Modifier.fillMaxWidth()); Text("Carregando programação…") }
+            loading -> SpaceLoader("Carregando programação…")
             error -> { Text("Não foi possível carregar o calendário."); TextButton(onClick = { attempt++ }) { Text("Tentar novamente") } }
             else -> {
                 val entries = schedule.filter { it.time.toLocalDate() == selected }

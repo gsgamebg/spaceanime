@@ -1,5 +1,7 @@
 package app.anim.manga
 
+import app.anim.design.ScreenHero
+import app.anim.design.SpaceLoader
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
@@ -202,8 +204,7 @@ actual fun MangaScreen(searchRequest: String, scrollState: ScrollState, profileI
         finally { loading = false }
     }
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Text("Mangás", style = MaterialTheme.typography.headlineMedium, color = Color.White)
-        Text("Busca separada de animes · capítulos disponíveis em português brasileiro", color = SpaceColors.onSurfaceVariant)
+        ScreenHero("Mangás", "Leia capítulos em português e acompanhe os títulos que você segue.", "book-open")
         if (manga == null) {
             OutlinedTextField(value = input, onValueChange = { input = it.take(120) }, modifier = Modifier.fillMaxWidth(), label = { Text("Buscar mangá por título") }, singleLine = true,
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search), keyboardActions = KeyboardActions(onSearch = { query = input.trim(); page = 0; retry++ }))
@@ -218,7 +219,7 @@ actual fun MangaScreen(searchRequest: String, scrollState: ScrollState, profileI
             chapter?.let { Text(it.label, color = SpaceColors.secondary) }
         }
         follows.error?.let { Text(it, color = SpaceColors.error) }
-        if (loading) LinearProgressIndicator(Modifier.fillMaxWidth())
+        if (loading) SpaceLoader(size = 120.dp)
         error?.let { message ->
             Text(message, color = SpaceColors.error)
             TextButton(onClick = { retry++ }) { Text("Tentar novamente") }

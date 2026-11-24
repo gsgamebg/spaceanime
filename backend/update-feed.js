@@ -10,7 +10,8 @@ function safeArtifact(raw, platform) {
     const suffix = platform === 'android' ? '.apk' : '.zip';
     if (!u.pathname.toLowerCase().endsWith(suffix)) return null;
     const storage = u.hostname === STORAGE_HOST && u.pathname.startsWith('/storage/v1/object/public/spaceanime-releases/');
-    const github = u.hostname === 'github.com' && /^\/gsgamebg\/spaceanime-releases\/releases\/download\/[A-Za-z0-9._-]+\/[A-Za-z0-9._-]+$/.test(u.pathname);
+    // gsgamebg/spaceanime hosts the official Releases (0.7.23+); spaceanime-releases kept for older feeds.
+    const github = u.hostname === 'github.com' && /^\/gsgamebg\/(spaceanime|spaceanime-releases)\/releases\/download\/[A-Za-z0-9._-]+\/[A-Za-z0-9._-]+$/.test(u.pathname);
     return storage || github ? u.href : null;
   } catch { return null; }
 }

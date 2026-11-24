@@ -27,6 +27,8 @@ interface SourceRepository {
     suspend fun synopsis(anime: AnimeResult): String? = null
     suspend fun episodes(anime: AnimeResult): List<Episode>
     suspend fun streams(anime: AnimeResult, episode: Episode): List<StreamOption>
+    /** Fast path to start playback: the first working option (main server first), without waiting for the rest. */
+    suspend fun quickStream(anime: AnimeResult, episode: Episode): StreamOption? = preferredStream(streams(anime, episode))
     suspend fun discover(sourceId: String): DiscoveryPage = DiscoveryPage(sourceId, emptyList(), emptyList())
     suspend fun animeForRecent(item: RecentEpisode): AnimeResult = throw SourceException("Não foi possível abrir este título.")
 }

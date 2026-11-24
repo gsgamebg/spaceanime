@@ -55,6 +55,7 @@ import app.anim.update.UPDATE_MANIFEST_URL
 import app.anim.update.UpdateCard
 import app.anim.update.createUpdateClient
 import app.anim.update.rememberRequiredReleaseStore
+import kotlinx.coroutines.async
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -186,8 +187,7 @@ fun App(onFullScreenChange: (Boolean) -> Unit = {}) {
             Surface(Modifier.fillMaxSize(), color = SpaceColors.background, contentColor = SpaceColors.onSurface) {
                 Box(Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                        SpaceLogo(Modifier.size(64.dp))
-                        CircularProgressIndicator(color = SpaceColors.primary)
+                        SpaceLoader(size = 150.dp)
                         Text("Sincronizando com o SpaceAnime…", color = SpaceColors.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium)
                     }
                 }
@@ -254,6 +254,13 @@ fun App(onFullScreenChange: (Boolean) -> Unit = {}) {
                 sessionScope.launch {
                     try {
                         var queueWarning: String? = null
+                        // Resolve the server while the episode list loads: both are needed, neither waits for the other.
+                        val streamJob = async {
+                            withTimeout(120_000) {
+                                repository.quickStream(progress.context.anime, progress.context.episode)?.source
+                                    ?: throw IllegalStateException("Nenhuma opção de reprodução foi encontrada.")
+                            }
+                        }
                         val episodes = try {
                             withTimeout(120_000) { repository.episodes(progress.context.anime) }
                         } catch (cancelled: CancellationException) {
@@ -264,9 +271,7 @@ fun App(onFullScreenChange: (Boolean) -> Unit = {}) {
                         }
                         val queueEpisodes = if (episodes.any { it.id == progress.context.episode.id }) episodes
                         else episodes + progress.context.episode
-                        val stream = withTimeout(120_000) {
-                            repository.streams(progress.context.anime, progress.context.episode).first().source
-                        }
+                        val stream = streamJob.await()
                         play(stream, EpisodeQueue(progress.context.anime, queueEpisodes, progress.context.episode.id), queueWarning)
                     }
                     catch (cancelled: CancellationException) { throw cancelled }
@@ -283,7 +288,7 @@ fun App(onFullScreenChange: (Boolean) -> Unit = {}) {
                 sessionScope.launch {
                     try {
                         val stream = withTimeout(120_000) {
-                            repository.streams(queue.anime, episode).firstOrNull()?.source
+                            repository.quickStream(queue.anime, episode)?.source
                                 ?: throw IllegalStateException("Nenhuma opção de reprodução foi encontrada.")
                         }
                         play(stream, queue.select(episode))
@@ -331,7 +336,7 @@ fun App(onFullScreenChange: (Boolean) -> Unit = {}) {
                         .fillMaxSize()
                         .background(
                             Brush.verticalGradient(
-                                listOf(Color(0xFF020617), Color(0xFF030920), Color(0xFF020617))
+                                listOf(Color(0xFF05030C), Color(0xFF030920), Color(0xFF05030C))
                             )
                         )
                         .safeDrawingPadding()
@@ -353,6 +358,8 @@ fun App(onFullScreenChange: (Boolean) -> Unit = {}) {
                         screen == SpaceScreen.Library -> "Minha Lista"
                         screen == SpaceScreen.Profile && profileTab == ProfileTab.History -> "Histórico"
                         screen == SpaceScreen.Profile && profileTab == ProfileTab.Settings -> "Configurações"
+                        screen == SpaceScreen.Profile && profileTab == ProfileTab.Plans -> "VIP"
+                        screen == SpaceScreen.Profile && profileTab == ProfileTab.Account -> "Perfil"
                         screen == SpaceScreen.Profile -> "Perfil"
                         else -> "Player"
                     }
@@ -375,6 +382,7 @@ fun App(onFullScreenChange: (Boolean) -> Unit = {}) {
                                 onLibrary = { screen = SpaceScreen.Library },
                                 onHistory = { screen = SpaceScreen.Profile; profileTab = ProfileTab.History },
                                 onSettings = { screen = SpaceScreen.Profile; profileTab = ProfileTab.Settings },
+                                onVip = { screen = SpaceScreen.Profile; profileTab = ProfileTab.Plans },
                                 onProfile = { screen = SpaceScreen.Profile; profileTab = ProfileTab.History },
 
                             )
@@ -421,7 +429,7 @@ fun App(onFullScreenChange: (Boolean) -> Unit = {}) {
                                 verticalArrangement = Arrangement.spacedBy(20.dp),
                             ) {
                                 if (release != null && screen != SpaceScreen.Profile) {
-                                    SpacePanel(modifier = Modifier.fillMaxWidth(), tonal = Color(0xFF1E1B4B)) {
+                                    SpacePanel(modifier = Modifier.fillMaxWidth(), tonal = Color(0xFF22123A)) {
                                         Row(
                                             Modifier.fillMaxWidth(),
                                             verticalAlignment = Alignment.CenterVertically,
@@ -471,6 +479,7 @@ fun App(onFullScreenChange: (Boolean) -> Unit = {}) {
                                                 categorySlug = categorySlug,
                                                 onCategory = { categorySlug = it; homeFocus = HomeNavFocus.Categories },
                                                 onTrending = { homeFocus = HomeNavFocus.Trending },
+                                                onReleases = { homeFocus = HomeNavFocus.Releases },
                                                 onSearch = { screen = SpaceScreen.Explore },
                                                 onLibrary = { screen = SpaceScreen.Library },
                                                 onOpenAnime = ::openAnime,
@@ -587,6 +596,7 @@ private fun SpaceSidebar(
     onLibrary: () -> Unit,
     onHistory: () -> Unit,
     onSettings: () -> Unit,
+    onVip: () -> Unit,
     onProfile: () -> Unit,
 
 ) {
@@ -604,6 +614,7 @@ private fun SpaceSidebar(
 
     )
     val bottomEntries = listOf(
+        NavEntry("VIP", "✦", active = activeKey == "VIP", onClick = onVip),
         NavEntry("Configurações", "⚙", active = activeKey == "Configurações", onClick = onSettings),
         NavEntry("Perfil", "◉", active = activeKey == "Perfil", onClick = onProfile),
 
@@ -620,7 +631,7 @@ private fun SpaceSidebar(
     ) {
         if (expanded) SpaceBrand() else SpaceLogo(Modifier.size(42.dp).align(Alignment.CenterHorizontally))
 
-        SpacePanel(modifier = Modifier.fillMaxWidth(), tonal = Color(0xFF0F172A), contentPadding = PaddingValues(12.dp)) {
+        SpacePanel(modifier = Modifier.fillMaxWidth(), tonal = Color(0xFF120B20), contentPadding = PaddingValues(12.dp)) {
             if (expanded) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -648,6 +659,8 @@ private fun SpaceSidebar(
                 }
             }
         }
+
+        if (expanded) app.anim.premium.VipPill(onClick = onVip, modifier = Modifier.align(Alignment.CenterHorizontally))
 
         Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) {
             SidebarSection("Catálogo", expanded, topEntries)
@@ -709,7 +722,7 @@ private fun SpaceHeader(
 ) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
-        color = Color(0xEE020617),
+        color = Color(0xEE05030C),
         border = BorderStroke(1.dp, SpaceHeaderBorder),
     ) {
         Row(
@@ -738,8 +751,8 @@ private fun SpaceHeader(
                 colors = OutlinedTextFieldDefaults.colors(
                     focusedBorderColor = SpaceColors.primary,
                     unfocusedBorderColor = SpaceBorderColor,
-                    focusedContainerColor = Color(0xFF0F172A),
-                    unfocusedContainerColor = Color(0xFF0F172A),
+                    focusedContainerColor = Color(0xFF120B20),
+                    unfocusedContainerColor = Color(0xFF120B20),
                     focusedTextColor = Color.White,
                     unfocusedTextColor = Color.White,
                     cursorColor = SpaceColors.secondary,
@@ -749,7 +762,7 @@ private fun SpaceHeader(
             Surface(
                 onClick = onNotification,
                 shape = CircleShape,
-                color = Color(0xFF0F172A),
+                color = Color(0xFF120B20),
                 border = BorderStroke(1.dp, if (hasNotification) SpaceColors.tertiary.copy(alpha = 0.5f) else SpaceBorderColor),
                 modifier = Modifier.size(42.dp),
             ) {
@@ -760,7 +773,7 @@ private fun SpaceHeader(
             Surface(
                 onClick = onProfile,
                 shape = RoundedCornerShape(999.dp),
-                color = Color(0xFF0F172A),
+                color = Color(0xFF120B20),
                 border = BorderStroke(1.dp, SpaceBorderColor),
             ) {
                 Row(
@@ -783,7 +796,7 @@ private fun SpaceHeader(
 
 @Composable
 private fun SecurityCard() {
-    SpacePanel(modifier = Modifier.fillMaxWidth(), tonal = Color(0xFF0F172A)) {
+    SpacePanel(modifier = Modifier.fillMaxWidth(), tonal = Color(0xFF120B20)) {
         Text("Privacidade e segurança", style = MaterialTheme.typography.titleLarge, color = Color.White, fontWeight = FontWeight.Bold)
         Text(
             "Perfis e biblioteca ficam neste dispositivo. Os perfis não têm senha e não substituem uma conta protegida. Capas e consultas usam HTTPS; nenhum pagamento ou coleta de analytics está ativo.",
@@ -800,7 +813,7 @@ private fun SecurityCard() {
 
 private fun navIcon(title: String): String = when (title) {
     "Início" -> "house"; "Explorar" -> "search"; "Em Alta" -> "flame"; "Lançamentos", "Calendário", "Agenda" -> "calendar-days"
-    "Minha Lista", "Lista" -> "bookmark"; "Categorias" -> "grid"; "Mangás" -> "book-open"; "Notícias" -> "newspaper"; "Histórico" -> "rotate-ccw"; "Configurações" -> "settings"; "Player" -> "play"; else -> "user-round"
+    "Minha Lista", "Lista" -> "bookmark"; "Categorias" -> "grid"; "Mangás" -> "book-open"; "Notícias" -> "newspaper"; "Histórico" -> "rotate-ccw"; "Configurações" -> "settings"; "VIP" -> "sparkles"; "Player" -> "play"; else -> "user-round"
 }
 
 

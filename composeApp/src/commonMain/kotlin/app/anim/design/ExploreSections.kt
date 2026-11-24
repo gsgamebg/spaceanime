@@ -51,14 +51,14 @@ private val PosterCardWidth = 160.dp
         }
         if (loading) {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                LinearProgressIndicator(Modifier.fillMaxWidth(), color = Color(0xFF8B5CF6), trackColor = Color(0xFF1E1B4B))
+                SpaceLoader(size = 120.dp)
                 Text("Buscando animes da categoria...", style = MaterialTheme.typography.bodySmall, color = Color(0xFF94A3B8))
             }
         }
         else if (error) {
-            SpacePanel(Modifier.fillMaxWidth(), tonal = Color(0xFF1E1B4B)) {
+            SpacePanel(Modifier.fillMaxWidth(), tonal = Color(0xFF22123A)) {
                 Text("Não foi possível carregar esta categoria.", color = SpaceColors.error)
-                TextButton(onClick = { retry++ }) { Text("Tentar novamente", color = Color(0xFF06B6D4)) }
+                TextButton(onClick = { retry++ }) { Text("Tentar novamente", color = Color(0xFF2DD4BF)) }
             }
         }
         else if (data.isEmpty() && !loading) {
@@ -76,7 +76,7 @@ private val PosterCardWidth = 160.dp
                         badge = {
                             SpaceBadge(
                                 if (anime.dubbed) "DUB" else "LEG",
-                                if (anime.dubbed) Color(0xFF8B5CF6) else Color(0xFF06B6D4),
+                                if (anime.dubbed) Color(0xFFA855F7) else Color(0xFF2DD4BF),
                                 Modifier.align(Alignment.TopStart).padding(8.dp)
                             )
                         }
@@ -90,7 +90,7 @@ private val PosterCardWidth = 160.dp
             verticalAlignment = Alignment.CenterVertically
         ) {
             TextButton(enabled = page > 1 && !loading, onClick = { requestedPage = page - 1 }) {
-                Text("← Anterior", color = if (page > 1 && !loading) Color(0xFF06B6D4) else Color(0xFF64748B))
+                Text("← Anterior", color = if (page > 1 && !loading) Color(0xFF2DD4BF) else Color(0xFF64748B))
             }
             Text(
                 if (page == 0) "Página 1" else "Página $page",
@@ -99,13 +99,13 @@ private val PosterCardWidth = 160.dp
                 style = MaterialTheme.typography.bodyMedium
             )
             TextButton(enabled = hasMore && !loading && page < 40, onClick = { requestedPage = page + 1 }) {
-                Text("Próxima →", color = if (hasMore && !loading && page < 40) Color(0xFF06B6D4) else Color(0xFF64748B))
+                Text("Próxima →", color = if (hasMore && !loading && page < 40) Color(0xFF2DD4BF) else Color(0xFF64748B))
             }
         }
     }
 }
 
-@Composable fun TrendingExplorer(repository: SourceRepository, onOpen: (AnimeResult) -> Unit) {
+@Composable fun TrendingExplorer(repository: SourceRepository, onOpen: (AnimeResult) -> Unit, grid: Boolean = false) {
     var retry by remember { mutableIntStateOf(0) }
     var loading by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf(false) }
@@ -124,21 +124,22 @@ private val PosterCardWidth = 160.dp
         SectionHeader("Em Alta Agora 🔥", "Tendências da comunidade encontradas nos servidores Space")
         if (loading) {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                LinearProgressIndicator(Modifier.fillMaxWidth(), color = Color(0xFF8B5CF6), trackColor = Color(0xFF1E1B4B))
+                SpaceLoader(size = 120.dp)
                 Text("Conectando aos servidores Space...", style = MaterialTheme.typography.bodySmall, color = Color(0xFF94A3B8))
             }
         }
         else if (error) {
-            SpacePanel(Modifier.fillMaxWidth(), tonal = Color(0xFF1E1B4B)) {
+            SpacePanel(Modifier.fillMaxWidth(), tonal = Color(0xFF22123A)) {
                 Text("Não foi possível carregar os títulos em alta.", color = SpaceColors.error)
-                TextButton(onClick = { retry++ }) { Text("Tentar novamente", color = Color(0xFF06B6D4)) }
+                TextButton(onClick = { retry++ }) { Text("Tentar novamente", color = Color(0xFF2DD4BF)) }
             }
         }
         else if (titles.isEmpty() && !loading) {
             Text("Nenhuma tendência foi encontrada nos servidores neste momento.", color = Color(0xFF94A3B8))
         }
 
-        if (titles.isNotEmpty()) {
+        if (titles.isNotEmpty() && grid) PosterCardGrid(titles, onOpen)
+        else if (titles.isNotEmpty()) {
             // LazyRow com largura fixa igual à aba de categorias — evita cards gigantes no desktop
             LazyRow(
                 horizontalArrangement = Arrangement.spacedBy(14.dp),
@@ -151,6 +152,25 @@ private val PosterCardWidth = 160.dp
                         modifier = Modifier.width(PosterCardWidth),
                         onClick = { onOpen(anime) }
                     )
+                }
+            }
+        }
+    }
+}
+
+/** Full responsive grid of poster cards ("ver tudo" pages): columns follow the available width. */
+@Composable fun PosterCardGrid(items: List<AnimeResult>, onOpen: (AnimeResult) -> Unit) {
+    BoxWithConstraints(Modifier.fillMaxWidth()) {
+        val columns = (maxWidth / (PosterCardWidth + 14.dp)).toInt().coerceIn(2, 8)
+        Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            items.chunked(columns).forEach { row ->
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                    row.forEach { anime ->
+                        AnimePosterCard(anime.title, anime.image, Modifier.weight(1f), onClick = { onOpen(anime) }, badge = {
+                            SpaceBadge(if (anime.dubbed) "DUB" else "LEG", if (anime.dubbed) SpaceAmethyst else SpaceLagoon, Modifier.align(Alignment.TopStart).padding(8.dp))
+                        })
+                    }
+                    repeat(columns - row.size) { Spacer(Modifier.weight(1f)) }
                 }
             }
         }

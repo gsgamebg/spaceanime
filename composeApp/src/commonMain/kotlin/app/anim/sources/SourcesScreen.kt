@@ -118,14 +118,24 @@ class SourceBrowserState {
         return EpisodeQueue(anime, episodes, episode.id)
     }
 
+    /** Opens the player with the first working server, then loads the other servers for "trocar servidor". */
+    suspend fun startFast(anime: AnimeResult, episode: Episode) {
+        val first = repository.quickStream(anime, episode) ?: throw SourceException("Nenhum servidor compatível encontrado neste episódio.")
+        browser.streams = listOf(first)
+        onPlay(first.source, queueFor(anime, episode))
+        scope.launch {
+            try { repository.streams(anime, episode).takeIf { it.isNotEmpty() && browser.episode?.id == episode.id }?.let { browser.streams = it } }
+            catch (cancelled: CancellationException) { throw cancelled }
+            catch (_: Exception) { }
+        }
+    }
+
     /** Clicking an episode plays it at once with the best option; the others stay listed as a fallback. */
     fun playEpisode(anime: AnimeResult, episode: Episode) {
         browser.episode = episode
         browser.streams = emptyList()
         run {
-            val streams = repository.streams(anime, episode)
-            browser.streams = streams
-            preferredStream(streams)?.let { onPlay(it.source, queueFor(anime, episode)) }
+            startFast(anime, episode)
         }
     }
 
@@ -177,9 +187,7 @@ class SourceBrowserState {
                 if (browser.episodes.none { it.id == episode.id }) browser.episodes = (browser.episodes + episode).sortedBy { it.number }
                 browser.episode = episode
                 browser.pendingEpisode = null
-                val streams = repository.streams(anime, episode)
-                browser.streams = streams
-                preferredStream(streams)?.let { onPlay(it.source, queueFor(anime, episode)) }
+                startFast(anime, episode)
             }
         }
     }
@@ -195,35 +203,7 @@ class SourceBrowserState {
             // =========================================================================
             // MODO EXPLORAR / CATÁLOGO / BUSCA
             // =========================================================================
-            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(38.dp)
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(Brush.linearGradient(listOf(Color(0xFF8B5CF6), Color(0xFF06B6D4)))),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        SpaceIcon("search", null, Modifier.size(20.dp), tint = Color.White)
-                    }
-                    Column {
-                        Text(
-                            "Explorar Universo Space",
-                            style = MaterialTheme.typography.headlineMedium,
-                            fontWeight = FontWeight.Bold,
-                            color = Color(0xFFF8FAFC)
-                        )
-                        Text(
-                            "Encontre animes legendados e dublados sem anúncios intrusivos.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = Color(0xFF94A3B8)
-                        )
-                    }
-                }
-            }
+            ScreenHero("Explorar", "Busque em todos os servidores, filtre por áudio e salve na sua lista.", "search")
             AdBannerSlot(AdPlacement.Catalog)
 
             // Campo de Busca
@@ -234,7 +214,7 @@ class SourceBrowserState {
                 singleLine = true,
                 placeholder = { Text("Qual anime você procura? (ex: Solo Leveling, One Piece)", color = Color(0xFF64748B)) },
                 label = { Text("Buscar animes") },
-                leadingIcon = { SpaceIcon("search", null, tint = Color(0xFF06B6D4)) },
+                leadingIcon = { SpaceIcon("search", null, tint = Color(0xFF2DD4BF)) },
                 trailingIcon = {
                     if (browser.query.isNotEmpty()) {
                         IconButton(onClick = { browser.query = "" }) {
@@ -246,10 +226,10 @@ class SourceBrowserState {
                 keyboardActions = KeyboardActions(onSearch = { retry++ }),
                 shape = RoundedCornerShape(16.dp),
                 colors = OutlinedTextFieldDefaults.colors(
-                    focusedContainerColor = Color(0xFF0F172A),
-                    unfocusedContainerColor = Color(0xFF0F172A),
-                    focusedBorderColor = Color(0xFF8B5CF6),
-                    unfocusedBorderColor = Color(0x338B5CF6),
+                    focusedContainerColor = Color(0xFF120B20),
+                    unfocusedContainerColor = Color(0xFF120B20),
+                    focusedBorderColor = Color(0xFFA855F7),
+                    unfocusedBorderColor = Color(0x33A855F7),
                     focusedTextColor = Color(0xFFF8FAFC),
                     unfocusedTextColor = Color(0xFFF8FAFC),
                 )
@@ -270,21 +250,21 @@ class SourceBrowserState {
             // Indicador de Carregamento
             if (browser.loading) {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    LinearProgressIndicator(Modifier.fillMaxWidth(), color = Color(0xFF8B5CF6), trackColor = Color(0xFF1E1B4B))
+                    SpaceLoader(size = 120.dp)
                     Row(
                         Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text("Buscando nos servidores Space...", style = MaterialTheme.typography.bodySmall, color = Color(0xFF94A3B8))
-                        TextButton(onClick = ::cancel) { Text("Cancelar consulta", color = Color(0xFF8B5CF6)) }
+                        TextButton(onClick = ::cancel) { Text("Cancelar consulta", color = Color(0xFFA855F7)) }
                     }
                 }
             }
 
             // Mensagem de Erro
             browser.error?.let { message ->
-                SpacePanel(Modifier.fillMaxWidth(), tonal = Color(0xFF1E1B4B)) {
+                SpacePanel(Modifier.fillMaxWidth(), tonal = Color(0xFF22123A)) {
                     Text(message, color = SpaceColors.error)
                     TextButton(onClick = {
                         val anime = browser.anime
@@ -293,7 +273,7 @@ class SourceBrowserState {
                             browser.episode?.let { browser.streams = repository.streams(anime, it) }
                         }
                     }) {
-                        Text("Tentar novamente", color = Color(0xFF06B6D4))
+                        Text("Tentar novamente", color = Color(0xFF2DD4BF))
                     }
                 }
             }
@@ -327,14 +307,14 @@ class SourceBrowserState {
                         onClick = ::loadMoreResults,
                         enabled = !browser.loading,
                         shape = RoundedCornerShape(14.dp),
-                        color = Color(0xFF0F172A),
-                        border = BorderStroke(1.dp, Color(0x338B5CF6)),
+                        color = Color(0xFF120B20),
+                        border = BorderStroke(1.dp, Color(0x33A855F7)),
                         modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)
                     ) {
                         Box(Modifier.padding(14.dp), contentAlignment = Alignment.Center) {
                             Text(
                                 if (browser.searchFailedSources.isNotEmpty()) "Tentar novamente / carregar próxima página" else "Carregar próxima página",
-                                color = Color(0xFF06B6D4),
+                                color = Color(0xFF2DD4BF),
                                 fontWeight = FontWeight.SemiBold
                             )
                         }
@@ -360,27 +340,27 @@ class SourceBrowserState {
                 Surface(
                     onClick = ::back,
                     shape = RoundedCornerShape(12.dp),
-                    color = Color(0xFF0F172A),
-                    border = BorderStroke(1.dp, Color(0x338B5CF6))
+                    color = Color(0xFF120B20),
+                    border = BorderStroke(1.dp, Color(0x33A855F7))
                 ) {
                     Row(
                         Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        SpaceIcon("chevron-left", null, Modifier.size(18.dp), tint = Color(0xFF06B6D4))
+                        SpaceIcon("chevron-left", null, Modifier.size(18.dp), tint = Color(0xFF2DD4BF))
                         Text("Voltar ao catálogo", style = MaterialTheme.typography.labelLarge, color = Color.White)
                     }
                 }
-                SpaceBadge(serverName(anime.sourceId), Color(0xFF1E1B4B))
+                SpaceBadge(serverName(anime.sourceId), Color(0xFF22123A))
             }
 
             // Card Principal do Anime
             Surface(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(24.dp),
-                color = Color(0xFF0F172A),
-                border = BorderStroke(1.dp, Color(0x338B5CF6)),
+                color = Color(0xFF120B20),
+                border = BorderStroke(1.dp, Color(0x33A855F7)),
                 contentColor = Color.White
             ) {
                 Column(
@@ -396,7 +376,7 @@ class SourceBrowserState {
                             modifier = Modifier
                                 .width(130.dp)
                                 .clip(RoundedCornerShape(16.dp))
-                                .border(1.5.dp, Color(0x448B5CF6), RoundedCornerShape(16.dp))
+                                .border(1.5.dp, Color(0x44A855F7), RoundedCornerShape(16.dp))
                         ) {
                             AnimePosterCard(anime.title, anime.image, Modifier.fillMaxWidth(), onClick = {})
                         }
@@ -417,17 +397,17 @@ class SourceBrowserState {
                             ) {
                                 SpaceBadge(
                                     if (anime.dubbed) "Dublado em Português" else "Legendado em Português",
-                                    if (anime.dubbed) Color(0xFF8B5CF6) else Color(0xFF06B6D4)
+                                    if (anime.dubbed) Color(0xFFA855F7) else Color(0xFF2DD4BF)
                                 )
-                                SpaceBadge(serverName(anime.sourceId), Color(0xFF1E1B4B))
+                                SpaceBadge(serverName(anime.sourceId), Color(0xFF22123A))
                             }
                             Button(
                                 onClick = { library.toggleFavorite(anime) },
                                 shape = RoundedCornerShape(14.dp),
                                 colors = ButtonDefaults.buttonColors(
-                                    containerColor = if (saved.isFavorite(anime)) Color(0xFF1E1B4B) else Color(0xFF8B5CF6)
+                                    containerColor = if (saved.isFavorite(anime)) Color(0xFF22123A) else Color(0xFFA855F7)
                                 ),
-                                border = BorderStroke(1.dp, if (saved.isFavorite(anime)) Color(0xFF8B5CF6) else Color.Transparent)
+                                border = BorderStroke(1.dp, if (saved.isFavorite(anime)) Color(0xFFA855F7) else Color.Transparent)
                             ) {
                                 SpaceIcon(
                                     "heart", null, Modifier.size(18.dp),
@@ -463,21 +443,21 @@ class SourceBrowserState {
             // Indicador de Carregamento de Episódios
             if (browser.loading) {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    LinearProgressIndicator(Modifier.fillMaxWidth(), color = Color(0xFF8B5CF6), trackColor = Color(0xFF1E1B4B))
+                    SpaceLoader(size = 120.dp)
                     Text("Carregando lista de episódios...", style = MaterialTheme.typography.bodySmall, color = Color(0xFF94A3B8))
                 }
             }
 
             // Erro de Carregamento
             browser.error?.let { message ->
-                SpacePanel(Modifier.fillMaxWidth(), tonal = Color(0xFF1E1B4B)) {
+                SpacePanel(Modifier.fillMaxWidth(), tonal = Color(0xFF22123A)) {
                     Text(message, color = SpaceColors.error)
                     TextButton(onClick = {
                         run {
                             browser.episodes = repository.episodes(anime)
                             browser.episode?.let { browser.streams = repository.streams(anime, it) }
                         }
-                    }) { Text("Tentar novamente", color = Color(0xFF06B6D4)) }
+                    }) { Text("Tentar novamente", color = Color(0xFF2DD4BF)) }
                 }
             }
 
@@ -486,8 +466,8 @@ class SourceBrowserState {
                 Surface(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(20.dp),
-                    color = Color(0xFF1E1B4B),
-                    border = BorderStroke(1.5.dp, Color(0xFF8B5CF6)),
+                    color = Color(0xFF22123A),
+                    border = BorderStroke(1.5.dp, Color(0xFFA855F7)),
                     contentColor = Color.White
                 ) {
                     Column(
@@ -503,7 +483,7 @@ class SourceBrowserState {
                                 Modifier
                                     .size(36.dp)
                                     .clip(CircleShape)
-                                    .background(Color(0xFF8B5CF6)),
+                                    .background(Color(0xFFA855F7)),
                                 contentAlignment = Alignment.Center
                             ) {
                                 SpaceIcon("play", null, Modifier.size(18.dp), tint = Color.White)
@@ -536,7 +516,7 @@ class SourceBrowserState {
                                 OutlinedButton(
                                     onClick = { onPlay(best.source.copy(startFromBeginning = true), queueFor(anime, episode)) },
                                     shape = RoundedCornerShape(12.dp),
-                                    border = BorderStroke(1.dp, Color(0x668B5CF6))
+                                    border = BorderStroke(1.dp, Color(0x66A855F7))
                                 ) { Text("Começar do início", color = Color(0xFFF8FAFC)) }
                             }
                         }
@@ -548,10 +528,10 @@ class SourceBrowserState {
             SectionHeader("Episódios", "${browser.episodes.size} disponíveis")
             val gaps = remember(browser.episodes) { missingEpisodeNumbers(browser.episodes) }
             if (gaps.isNotEmpty() && !browser.loading) {
-                SpacePanel(Modifier.fillMaxWidth(), tonal = Color(0xFF0F172A)) {
+                SpacePanel(Modifier.fillMaxWidth(), tonal = Color(0xFF120B20)) {
                     Text("A lista deste servidor pula ${gaps.size} número(s): ${gaps.take(8).joinToString(", ")}${if (gaps.size > 8) "…" else ""}.", color = Color(0xFF94A3B8))
                     TextButton(onClick = { val title = anime.title; back(); browser.query = title }) {
-                        Text("Procurar este anime no outro servidor", color = Color(0xFF06B6D4))
+                        Text("Procurar este anime no outro servidor", color = Color(0xFF2DD4BF))
                     }
                 }
             }
@@ -565,10 +545,10 @@ class SourceBrowserState {
                 label = { Text("Filtrar episódio por número ou nome") },
                 shape = RoundedCornerShape(14.dp),
                 colors = OutlinedTextFieldDefaults.colors(
-                    focusedContainerColor = Color(0xFF0F172A),
-                    unfocusedContainerColor = Color(0xFF0F172A),
-                    focusedBorderColor = Color(0xFF8B5CF6),
-                    unfocusedBorderColor = Color(0x338B5CF6),
+                    focusedContainerColor = Color(0xFF120B20),
+                    unfocusedContainerColor = Color(0xFF120B20),
+                    focusedBorderColor = Color(0xFFA855F7),
+                    unfocusedBorderColor = Color(0x33A855F7),
                     focusedTextColor = Color(0xFFF8FAFC),
                     unfocusedTextColor = Color(0xFFF8FAFC),
                 )
@@ -599,8 +579,8 @@ class SourceBrowserState {
                         onClick = { playEpisode(anime, episode) },
                         enabled = !browser.loading,
                         shape = RoundedCornerShape(16.dp),
-                        color = if (isSelected) Color(0xFF1E1B4B) else Color(0xFF0F172A),
-                        border = BorderStroke(1.dp, if (isSelected) Color(0xFF8B5CF6) else Color(0x228B5CF6)),
+                        color = if (isSelected) Color(0xFF22123A) else Color(0xFF120B20),
+                        border = BorderStroke(1.dp, if (isSelected) Color(0xFFA855F7) else Color(0x22A855F7)),
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Row(
@@ -612,10 +592,10 @@ class SourceBrowserState {
                                 Modifier
                                     .size(36.dp)
                                     .clip(CircleShape)
-                                    .background(if (isSelected) Color(0xFF8B5CF6) else Color(0xFF1E1B4B)),
+                                    .background(if (isSelected) Color(0xFFA855F7) else Color(0xFF22123A)),
                                 contentAlignment = Alignment.Center
                             ) {
-                                SpaceIcon("play", null, Modifier.size(18.dp), tint = if (isSelected) Color.White else Color(0xFF06B6D4))
+                                SpaceIcon("play", null, Modifier.size(18.dp), tint = if (isSelected) Color.White else Color(0xFF2DD4BF))
                             }
                             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                                 Text(episode.title, color = Color(0xFFF8FAFC), fontWeight = FontWeight.Medium)
@@ -629,7 +609,7 @@ class SourceBrowserState {
                                 checked = progress?.completed == true,
                                 onCheckedChange = { library.markWatched(EpisodeContext(anime, episode), it) },
                                 colors = CheckboxDefaults.colors(
-                                    checkedColor = Color(0xFF8B5CF6),
+                                    checkedColor = Color(0xFFA855F7),
                                     uncheckedColor = Color(0xFF64748B)
                                 )
                             )
@@ -645,18 +625,18 @@ class SourceBrowserState {
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    TextButton(enabled = page > 0, onClick = { episodePage = 0 }) { Text("Primeira", color = Color(0xFF06B6D4)) }
-                    TextButton(enabled = page > 0, onClick = { episodePage = page - 1 }) { Text("Anterior", color = Color(0xFF06B6D4)) }
+                    TextButton(enabled = page > 0, onClick = { episodePage = 0 }) { Text("Primeira", color = Color(0xFF2DD4BF)) }
+                    TextButton(enabled = page > 0, onClick = { episodePage = page - 1 }) { Text("Anterior", color = Color(0xFF2DD4BF)) }
                     Text("${page + 1} / ${(filtered.size + 29) / 30}", Modifier.padding(12.dp), color = Color(0xFF94A3B8))
-                    TextButton(enabled = (page + 1) * 30 < filtered.size, onClick = { episodePage = page + 1 }) { Text("Próxima", color = Color(0xFF06B6D4)) }
-                    TextButton(enabled = (page + 1) * 30 < filtered.size, onClick = { episodePage = (filtered.size - 1) / 30 }) { Text("Última", color = Color(0xFF06B6D4)) }
+                    TextButton(enabled = (page + 1) * 30 < filtered.size, onClick = { episodePage = page + 1 }) { Text("Próxima", color = Color(0xFF2DD4BF)) }
+                    TextButton(enabled = (page + 1) * 30 < filtered.size, onClick = { episodePage = (filtered.size - 1) / 30 }) { Text("Última", color = Color(0xFF2DD4BF)) }
                 }
             }
 
             // Seção de Comentários (POSICIONADA NO FINAL COM SEPARAÇÃO EXPLÍCITA)
             if (comments != null) {
                 Spacer(Modifier.height(16.dp))
-                HorizontalDivider(Modifier.fillMaxWidth(), color = Color(0x338B5CF6))
+                HorizontalDivider(Modifier.fillMaxWidth(), color = Color(0x33A855F7))
                 Spacer(Modifier.height(8.dp))
                 CommentsSection(anime, author, comments)
             }
