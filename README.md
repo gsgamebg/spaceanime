@@ -1,63 +1,71 @@
-# SpaceAnime — Windows e Android
+<div align="center">
 
-Aplicativo de streaming de animes em desenvolvimento. Nome: **SpaceAnime**.
+<img src="assets/branding/spaceanime.png" alt="SpaceAnime" width="132" />
 
-Base arquitetural escolhida: Kotlin Multiplatform e Compose Multiplatform, usando o [Aniyomi](https://github.com/aniyomiorg/aniyomi) como referência funcional e fonte potencial de código adaptado.
+# SpaceAnime
 
-Versão 0.5.0: interface compartilhada com Explorar, Buscar, Player, Biblioteca e Perfil. Busca em AniTube e Animes Digital, seleção de episódios e servidores, favoritos locais e retomada de reprodução. A lista de episódios permite filtrar por nome, ocultar assistidos e inverter a ordem.
+**Animes e mangás em português, no Android e no Windows.**
 
-- [Plano de desenvolvimento](docs/PLANO.md)
-- [Decisão de arquitetura](docs/ARQUITETURA.md)
-- [Player, dependências e testes](docs/PLAYER.md)
+![Android](https://img.shields.io/badge/Android-7C3AED?style=for-the-badge&logo=android&logoColor=white&labelColor=0B0614)
+![Windows](https://img.shields.io/badge/Windows-7C3AED?style=for-the-badge&logo=windows&logoColor=white&labelColor=0B0614)
+![Versão](https://img.shields.io/badge/vers%C3%A3o-0.7.23-A78BFA?style=for-the-badge&labelColor=0B0614)
+![Kotlin](https://img.shields.io/badge/Kotlin-Compose-7C3AED?style=for-the-badge&logo=kotlin&logoColor=white&labelColor=0B0614)
 
-## Executar no Windows
+[![Baixar para Android](https://img.shields.io/badge/BAIXAR-APK%20Android-7C3AED?style=for-the-badge&logo=android&logoColor=white&labelColor=0B0614)](https://github.com/gsgamebg/spaceanime/releases/download/v0.7.23/SpaceAnime-0.7.23-39-android.apk)
+[![Baixar para Windows](https://img.shields.io/badge/BAIXAR-ZIP%20Windows-7C3AED?style=for-the-badge&logo=windows&logoColor=white&labelColor=0B0614)](https://github.com/gsgamebg/spaceanime/releases/download/v0.7.23/SpaceAnime-0.7.23-39-windows.zip)
 
-Para gerar uma pasta portátil com executável, Java e VLC incluídos:
+</div>
 
-```powershell
-powershell -ExecutionPolicy Bypass -File scripts/package-windows.ps1
-```
+---
 
-O pacote ZIP fica em `dist/`. Extraia tudo e abra `SpaceAnime/SpaceAnime.exe`. Favoritos e progresso permanecem no mesmo armazenamento local. Consulte [Windows portátil](docs/WINDOWS-PORTATIL.md). A geração usa o [empacotamento oficial do Compose](https://kotlinlang.org/docs/multiplatform/compose-native-distribution.html).
+## 🪐 O que é
 
-Com as ferramentas locais preparadas, dê dois cliques em `Iniciar-Anim.cmd` ou execute:
+O **SpaceAnime** reúne em um só app o catálogo de animes e mangás, as notícias do universo otaku e o calendário de lançamentos, com visual escuro em roxo e um player pensado para abrir o episódio rápido.
 
-```powershell
-powershell -ExecutionPolicy Bypass -File scripts/run-desktop.ps1
-```
+## ✨ Funcionalidades
 
-## Gerar APK Android
+| | |
+|---|---|
+| ⚡ **Player rápido** | O episódio começa no primeiro servidor que responder, escolha de servidor, áudio e legendas, pular 10 s, próximo episódio e velocidade de reprodução. |
+| 🎬 **Catálogo de animes** | Busca, em alta, lançamentos, categorias e filtro por áudio dublado ou legendado. |
+| 📖 **Mangás** | Leia capítulos em português e acompanhe os títulos que você segue. |
+| 📰 **Notícias** | As novidades do universo anime e mangá em um só lugar. |
+| 📅 **Calendário semanal** | Veja o que estreia em cada dia da semana. |
+| 📚 **Biblioteca** | Favoritos, listas e histórico com retomada de onde você parou, salvos no seu dispositivo. |
+| 💎 **Área VIP** | Planos com vantagens extras para quem quer apoiar o projeto. |
+| 🔔 **Notificações** | No Android, aviso de novos episódios e capítulos dos títulos que você acompanha. |
+| 🔄 **Atualizações** | O app avisa quando há uma versão nova e baixa o pacote conferindo a integridade. |
 
-```powershell
-powershell -ExecutionPolicy Bypass -File scripts/build-android.ps1
-```
+---
 
-Saída: `composeApp/build/outputs/apk/debug/composeApp-debug.apk`. É um APK de desenvolvimento.
+## ⬇️ Como instalar
 
-## Preparar outro computador Windows x64
+### Android
 
-Requer Python 3.11+ e acesso à internet:
+1. Baixe o **APK** pelo botão acima.
+2. Abra o arquivo e permita a instalação de apps desta origem, se o Android pedir.
+3. Abra o SpaceAnime.
 
-```powershell
-python scripts/bootstrap.py
-powershell -ExecutionPolicy Bypass -File scripts/install-android-sdk.ps1
-powershell -ExecutionPolicy Bypass -File scripts/install-player.ps1
-```
+### Windows
 
-O SDK solicita a aceitação de seus termos. Ferramentas e caches ficam em `.tools/`, ignorado pelo Git. Não é necessário instalar Gradle globalmente. Os scripts ajustam Java e SDK apenas no processo atual. Android Studio é opcional para editar o projeto, mas facilita o uso de emulador.
+1. Baixe o **ZIP** pelo botão acima.
+2. Extraia a pasta inteira.
+3. Abra `SpaceAnime/SpaceAnime.exe`. Não precisa instalar Java nem player de vídeo, tudo vai junto.
 
-Versões iniciais: JDK 17, Gradle 8.13, Kotlin 2.2.20, Compose 1.9.1, AGP 8.9.3 e Android SDK 35; Android mínimo 26. A configuração de CI foi adicionada, mas só será executada quando o projeto estiver hospedado no GitHub.
+Todas as versões ficam em [Releases](https://github.com/gsgamebg/spaceanime/releases).
 
-Próximos objetivos: pacote Windows distribuível e ampliação gradual das fontes. Das 38 extensões importadas como metadados, duas possuem adaptadores nativos; as outras 36 ainda não estão disponíveis para reprodução. O app não executa o JavaScript do arquivo importado.
+---
 
-Favoritos e progresso ficam em `%LOCALAPPDATA%/Anim/library.json` no Windows e no armazenamento privado do app no Android. URLs temporárias de vídeo não são persistidas. Não há sincronização entre dispositivos.
+## 🔒 Privacidade
 
-Testes visuais ficam a cargo do usuário. Consulte [Validação](docs/VALIDACAO.md) para separar resultados automatizados de execução manual.
+Leia a [Política de Privacidade](docs/POLITICA-DE-PRIVACIDADE.md).
 
-## Novidades 0.5.0
+## 📌 Sobre este repositório
 
-Identidade roxa e logo própria, início com dados reais da biblioteca, até seis perfis locais, cache de metadados, paginação e aviso de atualizações preparado para Render. O canal ainda está desativado até existir um endereço público. Login, administração, coleta e pagamentos não foram ativados.
+Este repositório é **público apenas para distribuição** do aplicativo. O projeto é mantido exclusivamente por **[gsgamebg](https://github.com/gsgamebg)** e **não aceita contribuições externas nem Pull Requests**.
 
-- [Identidade visual](docs/SPACEANIME-DESIGN.md)
-- [Atualizações e Render](docs/ATUALIZACOES.md)
-- [Dados e evolução dos serviços](docs/DADOS-E-EVOLUCAO.md)
+<div align="center">
+
+💜 SpaceAnime
+
+</div>
