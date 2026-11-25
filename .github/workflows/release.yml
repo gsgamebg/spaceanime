@@ -50,9 +50,17 @@ jobs:
           ADMOB_HOME_BANNER_ID: ${{ secrets.ADMOB_HOME_BANNER_ID }}
           ADMOB_CATALOG_BANNER_ID: ${{ secrets.ADMOB_CATALOG_BANNER_ID }}
         run: |
+          # Secrets pasted from a file often carry a trailing newline, which breaks the password check.
+          foreach ($name in 'SPACEANIME_KEYSTORE_PASSWORD', 'SPACEANIME_KEY_ALIAS', 'SPACEANIME_KEY_PASSWORD') {
+            Set-Item "env:$name" ((Get-Item "env:$name").Value.TrimEnd("`r", "`n"))
+          }
           $keystore = Join-Path $env:RUNNER_TEMP 'spaceanime.jks'
-          [IO.File]::WriteAllBytes($keystore, [Convert]::FromBase64String($env:SPACEANIME_KEYSTORE_BASE64))
+          [IO.File]::WriteAllBytes($keystore, [Convert]::FromBase64String(($env:SPACEANIME_KEYSTORE_BASE64 -replace '\s', '')))
           $env:SPACEANIME_KEYSTORE_FILE = $keystore
+          # Non-secret fingerprint: compare with Get-FileHash of your local .jks to confirm it is the same file.
+          "Keystore: $((Get-Item $keystore).Length) bytes, SHA-256 $((Get-FileHash $keystore -Algorithm SHA256).Hash)"
+          keytool -list -keystore $keystore -storepass:env SPACEANIME_KEYSTORE_PASSWORD -alias $env:SPACEANIME_KEY_ALIAS | Out-Null
+          if ($LASTEXITCODE -ne 0) { throw "SPACEANIME_KEYSTORE_PASSWORD does not open this keystore, or SPACEANIME_KEY_ALIAS is not in it. Check the SHA-256 above against your local .jks." }
           ./gradlew.bat :composeApp:desktopTest :composeApp:assembleRelease --console=plain
           if ($LASTEXITCODE -ne 0) { throw "Android build failed" }
           New-Item -ItemType Directory -Force out | Out-Null
