@@ -203,17 +203,21 @@ function createHandler({
         if (!body) return;
         if (Object.keys(body).join(',') !== 'plan' || !Object.hasOwn(VIP_PLANS, body.plan)) return json(res, 400, { error: 'invalid_plan' });
         if (!user.email) return json(res, 400, { error: 'email_required' });
+        console.log(`[vip] create-pix plan=${body.plan}`);
         let orderId;
         try { orderId = await vipStore.createOrder(user.id, body.plan); }
         catch (error) {
-          return error?.message === 'vip_too_many_orders' ? json(res, 429, { error: 'too_many_orders' }) : json(res, 503, { error: 'vip_store_unavailable' });
+          if (error?.message === 'vip_too_many_orders') return json(res, 429, { error: 'too_many_orders' });
+          console.error(`[vip] create-pix: order not created (${error?.message})`);
+          return json(res, 503, { error: 'vip_store_unavailable' });
         }
-        if (!UUID.test(orderId || '')) return json(res, 503, { error: 'vip_store_unavailable' });
+        if (!UUID.test(orderId || '')) { console.error('[vip] create-pix: order id invalid'); return json(res, 503, { error: 'vip_store_unavailable' }); }
         let pix;
         try { pix = await mercadoPago.createPix({ orderId, plan: body.plan, email: user.email }); }
-        catch { return json(res, 502, { error: 'payment_provider_unavailable' }); }
+        catch (error) { console.error(`[vip] create-pix order=${orderId}: Mercado Pago failed (${error?.message})`); return json(res, 502, { error: 'payment_provider_unavailable' }); }
         try { await vipStore.attachPayment(orderId, pix.paymentId); }
-        catch { return json(res, 503, { error: 'vip_store_unavailable' }); }
+        catch (error) { console.error(`[vip] create-pix order=${orderId}: payment not attached (${error?.message})`); return json(res, 503, { error: 'vip_store_unavailable' }); }
+        console.log(`[vip] create-pix order=${orderId} payment=${pix.paymentId} ok`);
         return json(res, 201, {
           order_id: orderId, plan: body.plan, amount_cents: VIP_PLANS[body.plan].cents,
           qr_code: pix.qrCode, qr_code_base64: pix.qrCodeBase64, ticket_url: pix.ticketUrl, expires_at: pix.expiresAt,
@@ -252,11 +256,12 @@ function createHandler({
         if (!/^[0-9]{1,20}$/.test(dataId)) return json(res, 400, { error: 'invalid_payment_id' });
         if (env.MP_WEBHOOK_SECRET && !verifyWebhookSignature({
           secret: env.MP_WEBHOOK_SECRET, header: req.headers['x-signature'], requestId: req.headers['x-request-id'], dataId,
-        })) return json(res, 401, { error: 'invalid_signature' });
+        })) { console.error(`[vip] webhook payment=${dataId}: invalid signature`); return json(res, 401, { error: 'invalid_signature' }); }
         try {
           const result = await settlePayment({ mp: mercadoPago, store: vipStore, paymentId: dataId });
+          console.log(`[vip] webhook payment=${dataId} -> ${result.status}`);
           return json(res, 200, { status: result.status });
-        } catch { return json(res, 500, { error: 'payment_processing_failed' }); }
+        } catch (error) { console.error(`[vip] webhook payment=${dataId} failed (${error?.message})`); return json(res, 500, { error: 'payment_processing_failed' }); }
       }
       if (req.method === 'POST' && path === '/api/v1/telemetry') {
         if (!/^application\/json\b/i.test(req.headers['content-type'] || '')) return json(res, 415, { error: 'unsupported_media_type' });

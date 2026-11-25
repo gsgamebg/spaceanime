@@ -39,7 +39,12 @@ function createMercadoPago(env = process.env, fetchImpl = fetch) {
       headers: { Authorization: `Bearer ${env.MP_ACCESS_TOKEN}`, 'Content-Type': 'application/json', ...(init.headers || {}) },
       signal: AbortSignal.timeout(15000), redirect: 'error',
     });
-    if (!response.ok) throw new Error(`mercadopago_${response.status}`);
+    if (!response.ok) {
+      // Mercado Pago explains rejections in `message`/`cause`; log them (never the token).
+      const detail = await response.text().catch(() => '');
+      console.error(`[vip] Mercado Pago ${init.method} ${path} -> HTTP ${response.status}: ${detail.slice(0, 500)}`);
+      throw new Error(`mercadopago_${response.status}`);
+    }
     return response.json();
   }
   return {
@@ -81,18 +86,22 @@ function createMercadoPago(env = process.env, fetchImpl = fetch) {
 /** Supabase RPCs (service role). All VIP state is written by these functions only. */
 function createVipStore(env = process.env, fetchImpl = fetch) {
   async function rpc(name, args) {
-    if (!validSupabase(env)) throw new Error('vip_store_unavailable');
+    if (!validSupabase(env)) { console.error('[vip] SUPABASE_URL/SUPABASE_SECRET_KEY missing or invalid'); throw new Error('vip_store_unavailable'); }
     const response = await fetchImpl(new URL(`/rest/v1/rpc/${name}`, env.SUPABASE_URL), {
       method: 'POST',
       headers: { apikey: env.SUPABASE_SECRET_KEY, Authorization: `Bearer ${env.SUPABASE_SECRET_KEY}`, 'Content-Type': 'application/json', Accept: 'application/json' },
       body: JSON.stringify(args), signal: AbortSignal.timeout(8000), redirect: 'error',
     });
+    const text = await response.text().catch(() => '');
     if (!response.ok) {
-      const text = await response.text().catch(() => '');
       if (text.includes('vip_too_many_orders')) throw new Error('vip_too_many_orders');
+      console.error(`[vip] Supabase rpc ${name} -> HTTP ${response.status}: ${text.slice(0, 500)}`);
       throw new Error('vip_store_unavailable');
     }
-    return response.json();
+    // Functions returning void answer 204 with an empty body: that is success, not an error.
+    if (!text.trim()) return null;
+    try { return JSON.parse(text); }
+    catch { console.error(`[vip] Supabase rpc ${name} returned invalid JSON`); throw new Error('vip_store_unavailable'); }
   }
   return {
     createOrder: (userId, plan) => rpc('spaceanime_vip_create_order', { p_user: userId, p_plan: plan }),

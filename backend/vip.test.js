@@ -130,3 +130,17 @@ test('runtime config v2 validates provider and limits', () => {
   assert.throws(() => parseRuntimeConfigV2({ schemaVersion: 2, ads: { ...ads, provider: 'other' } }));
   assert.throws(() => parseRuntimeConfigV2({ schemaVersion: 2, ads: { ...ads, interstitialEveryEpisodes: 0 } }));
 });
+
+test('Supabase void RPCs (204, empty body) count as success', async () => {
+  const { createVipStore } = require('./vip');
+  const calls = [];
+  const fetchImpl = async (url) => {
+    calls.push(String(url));
+    if (String(url).endsWith('spaceanime_vip_attach_payment')) return new Response(null, { status: 204 });
+    return new Response(JSON.stringify(ORDER), { status: 200, headers: { 'content-type': 'application/json' } });
+  };
+  const store = createVipStore({ SUPABASE_URL: 'https://example.supabase.co', SUPABASE_SECRET_KEY: 'sb_secret_synthetic' }, fetchImpl);
+  assert.equal(await store.createOrder(USER, 'ouro'), ORDER);
+  assert.equal(await store.attachPayment(ORDER, 1), null);
+  assert.equal(calls.length, 2);
+});
