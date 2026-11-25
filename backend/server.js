@@ -8,6 +8,7 @@ const { createFirebaseSender } = require('./notifications-fcm');
 const { runDailyDigest } = require('./notifications-worker');
 const { createRuntimeConfigStore } = require('./runtime-config-store');
 const { parseTelemetry, clientIp, createTelemetryStore } = require('./telemetry');
+const { VIP_PLANS, UUID, mpConfigured, createMercadoPago, createVipStore, verifyWebhookSignature, settlePayment } = require('./vip');
 
 const MAX_BODY = 65536;
 function json(res, status, data) {
@@ -40,7 +41,12 @@ function createHandler({
   telemetryStore: telemetryStoreOverride,
   runDailyDigest: runDailyDigestOverride,
   firebaseSender: firebaseSenderOverride,
+  vipStore: vipStoreOverride,
+  mercadoPago: mercadoPagoOverride,
+  verifyAccount,
 } = {}) {
+  const vipStore = vipStoreOverride || createVipStore(env);
+  const mercadoPago = mercadoPagoOverride || createMercadoPago(env);
   const notificationStore = notificationStoreOverride || createNotificationStore(env);
   const runtimeConfigStore = runtimeConfigStoreOverride || createRuntimeConfigStore(env);
   const telemetryStore = telemetryStoreOverride || createTelemetryStore(env);
@@ -57,6 +63,32 @@ function createHandler({
     const user = await res.json();
     return typeof user.id === 'string' && /^[0-9a-f-]{36}$/i.test(user.id) ? user.id : null;
   });
+  // Same check as [authenticate], but also returns the e-mail Mercado Pago needs as the payer.
+  const account = verifyAccount || (async (token) => {
+    if (!urlValid(env.SUPABASE_URL, true) || !env.SUPABASE_PUBLISHABLE_KEY) return null;
+    const res = await fetch(new URL('/auth/v1/user', env.SUPABASE_URL), {
+      headers: { apikey: env.SUPABASE_PUBLISHABLE_KEY, Authorization: `Bearer ${token}` },
+      signal: AbortSignal.timeout(8000), redirect: 'error',
+    });
+    if (!res.ok) return null;
+    const user = await res.json();
+    if (typeof user.id !== 'string' || !UUID.test(user.id)) return null;
+    return { id: user.id, email: typeof user.email === 'string' && user.email.length <= 254 ? user.email : null };
+  });
+  async function authenticatedAccount(req, res) {
+    const match = /^Bearer ([A-Za-z0-9._~-]{1,8192})$/.exec(req.headers.authorization || '');
+    if (!match) { json(res, 401, { error: 'unauthorized' }); return null; }
+    let user;
+    try { user = await account(match[1]); }
+    catch { json(res, 503, { error: 'auth_unavailable' }); return null; }
+    if (!user) { json(res, 401, { error: 'unauthorized' }); return null; }
+    return user;
+  }
+  async function vipStatus(userId) {
+    const value = await vipStore.status(userId);
+    const active = value?.active === true && Object.hasOwn(VIP_PLANS, value.plan) && typeof value.expires_at === 'string';
+    return active ? { active: true, plan: value.plan, expires_at: value.expires_at } : { active: false, plan: null, expires_at: null };
+  }
   const persistEvent = persistSandboxEvent || (async (event) => {
     if (!urlValid(env.SUPABASE_URL, true) || !/^sb_secret_[A-Za-z0-9_-]+$/.test(env.SUPABASE_SECRET_KEY || '')) throw new Error('event_store_unavailable');
     const response = await fetch(new URL('/rest/v1/rpc/record_stripe_sandbox_event', env.SUPABASE_URL), {
@@ -155,6 +187,76 @@ function createHandler({
         } catch {
           return json(res, 503, { error: 'app_config_unavailable' });
         }
+      }
+      if (req.method === 'GET' && path === '/api/v2/app-config') {
+        try {
+          return json(res, 200, await runtimeConfigStore.readV2());
+        } catch {
+          return json(res, 503, { error: 'app_config_unavailable' });
+        }
+      }
+      if (req.method === 'POST' && path === '/api/vip/create-pix') {
+        if (!mpConfigured(env)) return json(res, 503, { error: 'payments_not_configured' });
+        const user = await authenticatedAccount(req, res);
+        if (!user) return;
+        const body = await readJsonBody(req, res);
+        if (!body) return;
+        if (Object.keys(body).join(',') !== 'plan' || !Object.hasOwn(VIP_PLANS, body.plan)) return json(res, 400, { error: 'invalid_plan' });
+        if (!user.email) return json(res, 400, { error: 'email_required' });
+        let orderId;
+        try { orderId = await vipStore.createOrder(user.id, body.plan); }
+        catch (error) {
+          return error?.message === 'vip_too_many_orders' ? json(res, 429, { error: 'too_many_orders' }) : json(res, 503, { error: 'vip_store_unavailable' });
+        }
+        if (!UUID.test(orderId || '')) return json(res, 503, { error: 'vip_store_unavailable' });
+        let pix;
+        try { pix = await mercadoPago.createPix({ orderId, plan: body.plan, email: user.email }); }
+        catch { return json(res, 502, { error: 'payment_provider_unavailable' }); }
+        try { await vipStore.attachPayment(orderId, pix.paymentId); }
+        catch { return json(res, 503, { error: 'vip_store_unavailable' }); }
+        return json(res, 201, {
+          order_id: orderId, plan: body.plan, amount_cents: VIP_PLANS[body.plan].cents,
+          qr_code: pix.qrCode, qr_code_base64: pix.qrCodeBase64, ticket_url: pix.ticketUrl, expires_at: pix.expiresAt,
+        });
+      }
+      const vipOrderMatch = /^\/api\/vip\/orders\/([0-9a-fA-F-]{36})$/.exec(path);
+      if (req.method === 'GET' && vipOrderMatch) {
+        const user = await authenticatedAccount(req, res);
+        if (!user) return;
+        if (!UUID.test(vipOrderMatch[1])) return json(res, 400, { error: 'invalid_order' });
+        try {
+          let order = await vipStore.orderStatus(vipOrderMatch[1], user.id);
+          if (!order || typeof order.status !== 'string') return json(res, 404, { error: 'order_not_found' });
+          // Webhooks can be late: while the buyer waits, ask Mercado Pago directly.
+          if (order.status === 'pending' && order.payment_id && mpConfigured(env)) {
+            try { await settlePayment({ mp: mercadoPago, store: vipStore, paymentId: order.payment_id }); } catch {}
+            order = await vipStore.orderStatus(vipOrderMatch[1], user.id);
+          }
+          return json(res, 200, { status: order.status, vip: await vipStatus(user.id) });
+        } catch { return json(res, 503, { error: 'vip_store_unavailable' }); }
+      }
+      if (req.method === 'GET' && path === '/api/vip/me') {
+        const user = await authenticatedAccount(req, res);
+        if (!user) return;
+        try { return json(res, 200, await vipStatus(user.id)); }
+        catch { return json(res, 503, { error: 'vip_store_unavailable' }); }
+      }
+      if (req.method === 'POST' && path === '/api/vip/webhook') {
+        if (!mpConfigured(env)) return json(res, 503, { error: 'payments_not_configured' });
+        const requestUrl = new URL(req.url, 'http://local');
+        let body = {};
+        try { const raw = (await readBody(req)).toString('utf8'); body = raw ? JSON.parse(raw) : {}; } catch { body = {}; }
+        const type = requestUrl.searchParams.get('type') || requestUrl.searchParams.get('topic') || body?.type;
+        const dataId = String(requestUrl.searchParams.get('data.id') || requestUrl.searchParams.get('id') || body?.data?.id || '');
+        if (type !== 'payment') return json(res, 200, { status: 'ignored' });
+        if (!/^[0-9]{1,20}$/.test(dataId)) return json(res, 400, { error: 'invalid_payment_id' });
+        if (env.MP_WEBHOOK_SECRET && !verifyWebhookSignature({
+          secret: env.MP_WEBHOOK_SECRET, header: req.headers['x-signature'], requestId: req.headers['x-request-id'], dataId,
+        })) return json(res, 401, { error: 'invalid_signature' });
+        try {
+          const result = await settlePayment({ mp: mercadoPago, store: vipStore, paymentId: dataId });
+          return json(res, 200, { status: result.status });
+        } catch { return json(res, 500, { error: 'payment_processing_failed' }); }
       }
       if (req.method === 'POST' && path === '/api/v1/telemetry') {
         if (!/^application\/json\b/i.test(req.headers['content-type'] || '')) return json(res, 415, { error: 'unsupported_media_type' });

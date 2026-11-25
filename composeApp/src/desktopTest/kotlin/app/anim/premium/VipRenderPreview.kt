@@ -32,11 +32,22 @@ class VipRenderPreview {
             }
         }
         File(dir, "hero.png").writeBytes(hero.render().encodeToData(EncodedImageFormat.PNG)!!.bytes); hero.close()
+        val loader = ImageComposeScene(900, 460, Density(1f)) {
+            CompositionLocalProvider(LocalSpaceMotionEnabled provides false) {
+                MaterialTheme(colorScheme = SpaceColors) {
+                    Row(Modifier.fillMaxSize().background(SpaceVoid).padding(16.dp), horizontalArrangement = Arrangement.spacedBy(24.dp)) {
+                        app.anim.design.LoaderArt("Carregando", Modifier.width(420.dp))
+                        app.anim.design.SpaceLoader("Carregando episódios…", Modifier.width(260.dp))
+                    }
+                }
+            }
+        }
+        File(dir, "loader.png").writeBytes(loader.render().encodeToData(EncodedImageFormat.PNG)!!.bytes); loader.close()
         for ((name, size) in listOf("vip-desktop" to (1400 to 1150), "vip-phone" to (420 to 2300))) {
             val scene = ImageComposeScene(size.first, size.second, Density(1f)) {
                 CompositionLocalProvider(LocalSpaceMotionEnabled provides false) {
                     MaterialTheme(colorScheme = SpaceColors) {
-                        Box(Modifier.fillMaxSize().background(SpaceVoid).padding(16.dp).verticalScroll(rememberScrollState())) { VipScreen() }
+                        Box(Modifier.fillMaxSize().background(SpaceVoid).padding(16.dp).verticalScroll(rememberScrollState())) { VipScreen(app.anim.auth.AccountState()) }
                     }
                 }
             }

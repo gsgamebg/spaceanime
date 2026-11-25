@@ -29,6 +29,24 @@ class AdsConfigTest {
         invalid.forEach { assertNull(parseAdsConfiguration(it)) }
     }
 
+    @Test fun schemaTwoCarriesProviderAndFullScreenFormats() {
+        val parsed = parseAdsConfiguration(
+            """{"schemaVersion":2,"ads":{"enabled":true,"provider":"startio","homeBanner":true,"catalogBanner":true,"interstitialEnabled":true,"interstitialEveryEpisodes":3,"rewardedEnabled":true,"rewardedPassMinutes":120}}""",
+        )!!
+        assertEquals(AdProvider.StartIo, parsed.provider)
+        assertTrue(parsed.interstitials && parsed.rewarded)
+        assertEquals(3, parsed.interstitialEveryEpisodes)
+        assertNull(parseAdsConfiguration("""{"schemaVersion":2,"ads":{"enabled":true,"provider":"other","homeBanner":true,"catalogBanner":true,"interstitialEnabled":true,"interstitialEveryEpisodes":3,"rewardedEnabled":true,"rewardedPassMinutes":120}}"""))
+        assertNull(parseAdsConfiguration("""{"schemaVersion":2,"ads":{"enabled":true,"provider":"startio","homeBanner":true,"catalogBanner":true,"interstitialEnabled":true,"interstitialEveryEpisodes":0,"rewardedEnabled":true,"rewardedPassMinutes":120}}"""))
+        // AdMob has no interstitial/rewarded units configured, so those formats stay off.
+        assertFalse(parsed.copy(provider = AdProvider.AdMob).interstitials)
+    }
+
+    @Test fun interstitialShowsEveryNthEpisodeNeverTheFirst() {
+        assertEquals(listOf(3, 6, 9), (1..10).filter { interstitialDue(it, 3) })
+        assertTrue((1..5).none { interstitialDue(it, 0) })
+    }
+
     @Test fun adsRequireFreshConsentAndCompletedPrivacyForm() {
         assertTrue(adsMayBeRequested(consentRefreshSucceeded = true, formCompleted = true, canRequestAds = true))
         assertFalse(adsMayBeRequested(consentRefreshSucceeded = false, formCompleted = true, canRequestAds = true))

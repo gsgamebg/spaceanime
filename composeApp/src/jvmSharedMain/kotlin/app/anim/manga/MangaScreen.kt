@@ -89,13 +89,13 @@ internal fun parseDexMangaResults(root: JsonObject, page: Int): PageResult<Manga
     }
     return PageResult(data, (root["total"] as? JsonPrimitive)?.intOrNull?.let { (page + 1) * 24 < it } ?: (data.size == 24))
 }
-private suspend fun searchDex(query: String, page: Int): PageResult<Manga> = withContext(Dispatchers.IO) {
+internal suspend fun searchDex(query: String, page: Int): PageResult<Manga> = withContext(Dispatchers.IO) {
     parseDexMangaResults(readJson(mangaDexSearchUrl(query, page)), page)
 }
 private suspend fun browseDex(page: Int): PageResult<Manga> = withContext(Dispatchers.IO) {
     parseDexMangaResults(readJson(mangaDexBrowseUrl(page)), page)
 }
-private suspend fun chapters(manga: Manga, page: Int): PageResult<Chapter> = if (manga.source == "yomu") yomuChapters(manga, page) else withContext(Dispatchers.IO) {
+internal suspend fun chapters(manga: Manga, page: Int): PageResult<Chapter> = if (manga.source == "yomu") yomuChapters(manga, page) else withContext(Dispatchers.IO) {
     val root = readJson(api("manga", uuid(manga.id), "feed").addQueryParameter("translatedLanguage[]", "pt-br").addQueryParameter("limit", "100").addQueryParameter("offset", (page * 100).toString())
         .addQueryParameter("order[chapter]", "asc").addQueryParameter("contentRating[]", "safe").addQueryParameter("contentRating[]", "suggestive").build())
     parseDexChapters(root, page)
@@ -115,7 +115,7 @@ internal fun parseDexChapters(root: JsonObject, page: Int): PageResult<Chapter> 
     }
     return PageResult(data, (root["total"] as? JsonPrimitive)?.intOrNull?.let { (page + 1) * 100 < it } ?: false, unavailableChapters = omitted)
 }
-private suspend fun pages(chapter: Chapter): List<String> = if (chapter.source == "yomu") yomuPages(chapter) else withContext(Dispatchers.IO) {
+internal suspend fun pages(chapter: Chapter): List<String> = if (chapter.source == "yomu") yomuPages(chapter) else withContext(Dispatchers.IO) {
     val root = readJson(api("at-home", "server", uuid(chapter.id)).addQueryParameter("forcePort443", "true").build())
     val base = root.str("baseUrl")?.toHttpUrlOrNull() ?: error("Servidor de imagens inválido")
     if (!base.isHttps || base.port != 443 || base.username.isNotEmpty() || base.password.isNotEmpty() || !base.host.endsWith(".mangadex.network")) error("Servidor de imagens não confiável")
@@ -144,7 +144,7 @@ internal fun parseYomuChapters(root: JsonObject, slug: String): List<Chapter> = 
     val title = item.str("title")?.takeIf { it.isNotBlank() }?.take(100) ?: "Capítulo $number"
     Chapter(number, title, "yomu", slug)
 }
-private suspend fun searchYomu(query: String, page: Int): PageResult<Manga> = withContext(Dispatchers.IO) {
+internal suspend fun searchYomu(query: String, page: Int): PageResult<Manga> = withContext(Dispatchers.IO) {
     parseYomuSearch(readJson(yomuApi("list").addQueryParameter("q", query).addQueryParameter("page", (page + 1).toString()).build()))
 }
 private suspend fun search(query: String, page: Int): PageResult<Manga> = coroutineScope {

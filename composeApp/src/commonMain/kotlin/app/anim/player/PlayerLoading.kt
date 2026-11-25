@@ -17,10 +17,10 @@ import androidx.compose.ui.unit.dp
 import app.anim.design.LocalSpaceMotionEnabled
 import app.anim.design.SpaceColors
 
-/** Player loading: the branded transparent character animation over the black video area. */
+/** Player loading: the branded loader art over the black video area. */
 @Composable fun PlayerLoading(message: String, modifier: Modifier = Modifier) {
     Column(modifier, horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-        app.anim.design.AnimatedAsset(app.anim.design.LOADING_ANIMATION, "Carregando o vídeo", Modifier.height(190.dp).aspectRatio(384f / 512f))
+        app.anim.design.LoaderArt("Carregando o vídeo", Modifier.height(190.dp))
         Text(message, color = SpaceColors.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
     }
 }

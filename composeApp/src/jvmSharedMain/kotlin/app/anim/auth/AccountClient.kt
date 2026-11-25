@@ -6,6 +6,7 @@ import kotlinx.serialization.json.*
 import okhttp3.*
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.RequestBody.Companion.toRequestBody
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import java.util.concurrent.TimeUnit
 import app.anim.profile.LocalProfile
 import app.anim.notifications.NotificationPreferences
@@ -41,6 +42,19 @@ internal fun parseOnlineProfile(text: String): OnlineProfile? {
     val avatar = row["avatar_asset_id"]?.jsonPrimitive?.contentOrNull ?: "default"
     val banner = row["banner_asset_id"]?.jsonPrimitive?.contentOrNull ?: "default"
     return OnlineProfile(name, bio, avatar.takeIf { it in setOf("default", "nova", "orion") } ?: "default", banner.takeIf { it in setOf("default", "cosmos") } ?: "default")
+}
+/** Parses `{active, plan, expires_at}` from the backend; anything unexpected means "not VIP". */
+internal fun parseVipStatus(value: JsonObject): app.anim.premium.VipStatus {
+    val active = value["active"]?.jsonPrimitive?.booleanOrNull == true
+    val plan = value["plan"]?.jsonPrimitive?.contentOrNull?.takeIf { it in setOf("ouro", "platina", "ametista") }
+    val expires = value["expires_at"]?.jsonPrimitive?.contentOrNull?.let { raw ->
+        try { java.time.OffsetDateTime.parse(raw) } catch (_: Exception) {
+            try { java.time.OffsetDateTime.parse(raw.replace(' ', 'T').let { if (Regex("[+-]\\d{2}$").containsMatchIn(it)) "$it:00" else it }) } catch (_: Exception) { null }
+        }
+    }
+    if (!active || plan == null || expires == null) return app.anim.premium.VipStatus()
+    val label = expires.atZoneSameInstant(java.time.ZoneId.systemDefault()).format(java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy"))
+    return app.anim.premium.VipStatus(true, plan, label)
 }
 internal class AccountClient(
     private val client: OkHttpClient = OkHttpClient.Builder().connectTimeout(10, TimeUnit.SECONDS).callTimeout(20, TimeUnit.SECONDS).followRedirects(false).followSslRedirects(false).build(),
@@ -221,6 +235,55 @@ internal class AccountClient(
             .header("apikey", SUPABASE_PUBLISHABLE_KEY).header("Authorization", "Bearer ${session.accessToken}")
             .post(ByteArray(0).toRequestBody()).build()
         client.newCall(request).execute().use { if (!it.isSuccessful) throw java.io.IOException("logout failed") }
+    }
+    suspend fun createPix(session: AccountSession, plan: String): app.anim.premium.PixCharge = withContext(Dispatchers.IO) {
+        require(plan in setOf("ouro", "platina", "ametista"))
+        val payload = buildJsonObject { put("plan", plan) }.toString().toRequestBody("application/json".toMediaType())
+        val request = notificationRequest(session, "/api/vip/create-pix").post(payload).build()
+        val body = try {
+            client.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) throw app.anim.premium.VipException(when (response.code) {
+                    401 -> "Sua sessão expirou. Entre novamente."
+                    429 -> "Muitas tentativas de pagamento. Aguarde alguns minutos."
+                    503 -> "Os pagamentos estão indisponíveis no momento. Tente mais tarde."
+                    else -> "Não foi possível gerar o Pix. Tente novamente."
+                })
+                readJson(response)
+            }
+        } catch (e: java.io.IOException) { throw app.anim.premium.VipException("Sem conexão. Verifique a internet e tente novamente.") }
+        fun text(key: String) = body[key]?.jsonPrimitive?.contentOrNull
+        val orderId = text("order_id")?.takeIf { Regex("[0-9a-fA-F-]{36}").matches(it) }
+        val qrCode = text("qr_code")?.takeIf { it.length in 1..1024 }
+        val image = text("qr_code_base64")?.takeIf { it.length in 1..200_000 }
+        val amount = body["amount_cents"]?.jsonPrimitive?.intOrNull
+        if (orderId == null || qrCode == null || image == null || amount == null) throw app.anim.premium.VipException("Resposta inválida do servidor de pagamentos.")
+        val ticket = text("ticket_url")?.takeIf { url ->
+            url.toHttpUrlOrNull()?.let { it.isHttps && (it.host == "mercadopago.com.br" || it.host.endsWith(".mercadopago.com.br") || it.host == "mercadopago.com" || it.host.endsWith(".mercadopago.com")) } == true
+        }
+        val png = try { java.util.Base64.getMimeDecoder().decode(image) } catch (_: IllegalArgumentException) { throw app.anim.premium.VipException("Resposta inválida do servidor de pagamentos.") }
+        app.anim.premium.PixCharge(orderId, plan, amount, qrCode, png, ticket)
+    }
+    suspend fun vipOrder(session: AccountSession, orderId: String): Pair<app.anim.premium.PixOrderState, app.anim.premium.VipStatus?> = withContext(Dispatchers.IO) {
+        require(Regex("[0-9a-fA-F-]{36}").matches(orderId))
+        val request = notificationRequest(session, "/api/vip/orders/$orderId").get().build()
+        client.newCall(request).execute().use { response ->
+            if (!response.isSuccessful) return@withContext app.anim.premium.PixOrderState.Pending to null
+            val body = readJson(response)
+            val state = when (body["status"]?.jsonPrimitive?.contentOrNull) {
+                "paid" -> app.anim.premium.PixOrderState.Paid
+                "expired" -> app.anim.premium.PixOrderState.Expired
+                "failed" -> app.anim.premium.PixOrderState.Failed
+                else -> app.anim.premium.PixOrderState.Pending
+            }
+            state to (body["vip"] as? JsonObject)?.let(::parseVipStatus)
+        }
+    }
+    suspend fun vipStatus(session: AccountSession): app.anim.premium.VipStatus = withContext(Dispatchers.IO) {
+        val request = notificationRequest(session, "/api/vip/me").get().build()
+        client.newCall(request).execute().use { response ->
+            if (!response.isSuccessful) throw java.io.IOException("vip status unavailable")
+            parseVipStatus(readJson(response))
+        }
     }
     private fun notificationRequest(session: AccountSession, path: String): Request.Builder =
         Request.Builder().url(backendUrl + path)

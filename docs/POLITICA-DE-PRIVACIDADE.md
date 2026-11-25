@@ -1,6 +1,6 @@
 # Política de Privacidade do SpaceAnime
 
-Última atualização: 24 de novembro de 2026
+Última atualização: 25 de novembro de 2026
 
 Esta política explica quais dados o aplicativo SpaceAnime (Android e Windows) coleta, por que coleta e o que você pode fazer a respeito. Ela vale para o app e para o servidor `spaceanime.onrender.com`, que entrega as atualizações.
 
@@ -37,21 +37,21 @@ Se você ativar as notificações, o app registra um token do Firebase Cloud Mes
 
 ### Anúncios (Android)
 
-A versão Android pode exibir banners do **Google AdMob**. Antes de qualquer anúncio, o app mostra a mensagem de consentimento do Google (UMP), quando ela é exigida na sua região. Se você não der consentimento, nenhum anúncio é solicitado.
+A versão Android pode exibir anúncios do **Google AdMob** ou da **Start.io**: banners, anúncios em tela cheia entre episódios e vídeos premiados opcionais (assistir a um vídeo libera um período sem anúncios). Antes de qualquer anúncio, o app mostra a mensagem de consentimento do Google (UMP), quando ela é exigida na sua região. Se você não der consentimento, nenhum anúncio é solicitado. Assinantes VIP não veem anúncios.
 
-Quando os anúncios estão ativos, o Google pode coletar o identificador de publicidade do aparelho, o endereço IP e dados de interação com o anúncio, conforme a [política de privacidade do Google](https://policies.google.com/privacy) e a página [Como o Google usa informações de sites ou apps que usam nossos serviços](https://policies.google.com/technologies/partner-sites). Você pode rever sua escolha em **Opções de privacidade**, abaixo do banner, e redefinir o identificador de publicidade nas configurações do Android.
+Quando os anúncios estão ativos, o Google e a Start.io podem coletar o identificador de publicidade do aparelho, o endereço IP e dados de interação com o anúncio, conforme a [política de privacidade do Google](https://policies.google.com/privacy) a página [Como o Google usa informações de sites ou apps que usam nossos serviços](https://policies.google.com/technologies/partner-sites) e a [política de privacidade da Start.io](https://www.start.io/policy/privacy-policy-site/). O SDK da Start.io pode atualizar suas configurações de anúncio em segundo plano, inclusive depois de o aparelho reiniciar. Você pode rever sua escolha em **Opções de privacidade**, abaixo do banner, e redefinir o identificador de publicidade nas configurações do Android.
 
 A versão Windows não exibe anúncios.
 
-### Pagamentos
+### Pagamentos (VIP)
 
-Se você assinar um plano VIP, o pagamento é processado pelo provedor de pagamento. O SpaceAnime não recebe nem armazena os dados do seu cartão.
+O VIP é pago por **Pix**, processado pelo **Mercado Pago**. Para gerar a cobrança, enviamos ao Mercado Pago o e-mail da sua conta e o valor do plano. Guardamos apenas o plano, o valor, a situação do pagamento, o identificador do pagamento no Mercado Pago e a data de validade do seu VIP. Não recebemos dados bancários. O tratamento feito pelo Mercado Pago segue a [política de privacidade do Mercado Pago](https://www.mercadopago.com.br/privacidade).
 
 ## O que não fazemos
 
 - Não vendemos seus dados.
 - Não usamos sua localização precisa, contatos, câmera ou microfone.
-- Não compartilhamos seus dados com terceiros além dos provedores citados aqui (Supabase, Render, Google/Firebase, Google AdMob e o provedor de pagamento), que os tratam apenas para prestar o serviço.
+- Não compartilhamos seus dados com terceiros além dos provedores citados aqui (Supabase, Render, Google/Firebase, Google AdMob, Start.io e Mercado Pago), que os tratam apenas para prestar o serviço.
 
 ## Conteúdo de terceiros
 

@@ -124,7 +124,7 @@ private fun ProfileTab.label() = when (this) {
                             }
                         }
                         Box(Modifier.align(Alignment.BottomCenter).border(4.dp, CardColor, CircleShape)) {
-                            ProfilePicture(accountState.avatarAsset, state.active.name, state.active.color, avatarSize)
+                            app.anim.premium.VipFrame(accountState.vip.plan.takeIf { accountState.vip.active }, avatarSize) { ProfilePicture(accountState.avatarAsset, state.active.name, state.active.color, avatarSize) }
                         }
                     }
                     Column(
@@ -134,6 +134,7 @@ private fun ProfileTab.label() = when (this) {
                     ) {
                         Text(state.active.name, style = if (compact) MaterialTheme.typography.titleLarge else MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold, color = Color(0xFFF8FAFC))
                         Text(accountState.email ?: "Perfil local", style = MaterialTheme.typography.bodySmall, color = SpaceLagoon)
+                        if (accountState.vip.active) app.anim.premium.VipBadge(accountState.vip.plan)
                         if (state.active.bio.isNotBlank()) Text(state.active.bio, style = MaterialTheme.typography.bodyMedium, color = Muted, textAlign = TextAlign.Center)
                         Spacer(Modifier.height(6.dp))
                         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -191,7 +192,7 @@ private fun ProfileTab.label() = when (this) {
                     TextButton(enabled = (page + 1) * 20 < items.size, onClick = { favoritesPage = page + 1 }) { Text("Próxima") }
                 }
             }
-            ProfileTab.Plans -> VipScreen()
+            ProfileTab.Plans -> VipScreen(accountState)
             ProfileTab.Account -> Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
                 SettingsGroup("Sua conta", "user-round") {
                     SettingsRow("Conectado como", accountState.email.orEmpty().ifBlank { state.active.name })

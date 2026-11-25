@@ -148,6 +148,28 @@ actual class AccountState internal constructor(
         if (session != current) throw IllegalStateException("Sessão alterada")
         if (notificationDeviceId == deviceId) notificationDeviceId = null
     }
+    internal var vipState by mutableStateOf(app.anim.premium.VipStatus())
+    actual val vip: app.anim.premium.VipStatus get() = if (session == null) app.anim.premium.VipStatus() else vipState
+
+    /** The current session, renewed first when its access token is about to expire. */
+    private suspend fun freshSession(): AccountSession {
+        val current = session ?: throw app.anim.premium.VipException("Entre na sua conta para assinar.")
+        if (current.expiresAt - clock() > RENEW_MARGIN_MS) return current
+        val outcome = renew(current)
+        return (outcome as? RefreshOutcome.Renewed)?.session ?: session?.takeIf { it.expiresAt - clock() > 0 }
+            ?: throw app.anim.premium.VipException("Sua sessão expirou. Entre novamente.")
+    }
+    actual suspend fun refreshVip() {
+        val current = session ?: return
+        val status = try { client.vipStatus(freshSession()) } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (_: Exception) { return }
+        if (session?.userId == current.userId) vipState = status
+    }
+    actual suspend fun createPix(plan: String): app.anim.premium.PixCharge = client.createPix(freshSession(), plan)
+    actual suspend fun pixOrderState(orderId: String): app.anim.premium.PixOrderState {
+        val (state, status) = client.vipOrder(freshSession(), orderId)
+        if (status != null) vipState = status
+        return state
+    }
     private companion object { const val RENEW_MARGIN_MS = 60_000L }
 }
 @Composable actual fun rememberAccountState(): AccountState {

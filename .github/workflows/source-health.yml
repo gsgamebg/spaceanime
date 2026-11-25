@@ -1,0 +1,52 @@
+name: Source health
+# Every 6 hours, checks each anime and manga source end to end (see SourceHealthProbe).
+# On failure it opens (or updates) one issue labelled "fonte-fora-do-ar"; on recovery it closes it.
+on:
+  schedule:
+    - cron: '17 */6 * * *'
+  workflow_dispatch:
+permissions:
+  contents: read
+  issues: write
+concurrency:
+  group: source-health
+  cancel-in-progress: true
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Probe sources
+        id: probe
+        continue-on-error: true
+        env:
+          ANIM_HEALTH: '1'
+          ANIM_HEALTH_REPORT: ${{ runner.temp }}/source-health.md
+        run: |
+          chmod +x gradlew
+          ./gradlew :composeApp:desktopTest --tests 'app.anim.sources.SourceHealthProbe' --console=plain
+      - name: Report
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPORT: ${{ runner.temp }}/source-health.md
+          OUTCOME: ${{ steps.probe.outcome }}
+        run: |
+          [ -f "$REPORT" ] || echo "A verificação não chegou a rodar (falha de build). Veja o log do workflow." > "$REPORT"
+          cat "$REPORT" >> "$GITHUB_STEP_SUMMARY"
+          gh label create fonte-fora-do-ar --color B91C1C --description "Monitor automático das fontes" 2>/dev/null || true
+          issue=$(gh issue list --label fonte-fora-do-ar --state open --json number --jq '.[0].number')
+          run_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+          if [ "$OUTCOME" = "success" ]; then
+            [ -n "$issue" ] && gh issue close "$issue" --comment "Fontes normalizadas em $(date -u '+%d/%m %H:%M') UTC. [Execução]($run_url)"
+            exit 0
+          fi
+          body="$(cat "$REPORT")"$'\n\n'"[Execução]($run_url)"
+          if [ -n "$issue" ]; then gh issue comment "$issue" --body "$body"
+          else gh issue create --title "Monitor: fonte de vídeo ou mangá com problema" --label fonte-fora-do-ar --body "$body"; fi
+          exit 1

@@ -76,6 +76,15 @@ private data class NavEntry(
 fun App(onFullScreenChange: (Boolean) -> Unit = {}) {
     remember { configureArtwork(); true }
     val accountState = rememberAccountState()
+    val adsController = app.anim.ads.rememberAdsController()
+    // VIP status drives the badge, the frame and ad removal; refreshed while signed in.
+    LaunchedEffect(accountState.isAuthenticated) {
+        while (accountState.isAuthenticated) { accountState.refreshVip(); kotlinx.coroutines.delay(15 * 60_000L) }
+    }
+    var adTick by remember { mutableStateOf(0) }
+    LaunchedEffect(Unit) { while (true) { kotlinx.coroutines.delay(60_000L); adTick++ } }
+    val vipPlan = accountState.vip.plan.takeIf { accountState.vip.active }
+    val adFree = vipPlan != null || (adTick >= 0 && adsController.adFreeMinutesLeft() > 0)
     // Sends the launch telemetry event (opt-out in Perfil > Privacidade).
     app.anim.telemetry.rememberTelemetry()
     val profiles = rememberProfiles()
@@ -182,7 +191,13 @@ fun App(onFullScreenChange: (Boolean) -> Unit = {}) {
         typography = spaceTypography(),
         shapes = Shapes(medium = RoundedCornerShape(18.dp), large = RoundedCornerShape(24.dp)),
     ) {
-        CompositionLocalProvider(LocalSpaceMotionEnabled provides !profileState.active.reduceMotion, LocalContentColor provides SpaceColors.onSurface) {
+        CompositionLocalProvider(
+            LocalSpaceMotionEnabled provides !profileState.active.reduceMotion,
+            LocalContentColor provides SpaceColors.onSurface,
+            app.anim.ads.LocalAdFree provides adFree,
+            app.anim.ads.LocalAdsController provides adsController,
+            app.anim.premium.LocalVipPlan provides vipPlan,
+        ) {
         if (initialUpdateCheck) {
             Surface(Modifier.fillMaxSize(), color = SpaceColors.background, contentColor = SpaceColors.onSurface) {
                 Box(Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
@@ -227,6 +242,9 @@ fun App(onFullScreenChange: (Boolean) -> Unit = {}) {
             var categorySlug by remember { mutableStateOf("acao") }
             var profileTab by remember { mutableStateOf(ProfileTab.History) }
             var source by remember { mutableStateOf<PlaybackSource?>(null) }
+            // Each newly opened episode counts toward the interstitial (switching server does not).
+            val openedEpisode = source?.let { it.context ?: it.url }
+            LaunchedEffect(openedEpisode) { if (openedEpisode != null) adsController.onEpisodeOpened(adFree) }
             var playerQueue by remember { mutableStateOf<EpisodeQueue?>(null) }
             var playerNavigationError by remember { mutableStateOf<String?>(null) }
             var headerQuery by remember { mutableStateOf("") }

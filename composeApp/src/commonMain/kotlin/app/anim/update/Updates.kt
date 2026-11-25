@@ -1,7 +1,7 @@
 package app.anim.update
 
-const val APP_VERSION = "0.7.23"
-const val APP_VERSION_CODE = 39
+const val APP_VERSION = "0.7.24"
+const val APP_VERSION_CODE = 40
 /** Public GitHub repository whose Releases drive the mandatory update. */
 const val GITHUB_REPOSITORY = "gsgamebg/spaceanime"
 // Empty means no network checks.

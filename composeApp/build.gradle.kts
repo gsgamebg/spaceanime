@@ -12,12 +12,14 @@ val admobReleaseHomeBannerId = System.getenv("ADMOB_HOME_BANNER_ID").orEmpty()
 val admobReleaseCatalogBannerId = System.getenv("ADMOB_CATALOG_BANNER_ID").orEmpty()
 val admobAppIdPattern = Regex("""ca-app-pub-\d{16}~\d{10}""")
 val admobBannerIdPattern = Regex("""ca-app-pub-\d{16}/\d{10}""")
+val startIoAppId = System.getenv("STARTIO_APP_ID").orEmpty().trim()
+val startIoAppIdPattern = Regex("""\d{6,12}""")
 val admobTestAppId = "ca-app-pub-3940256099942544~3347511713"
 val admobTestBannerId = "ca-app-pub-3940256099942544/9214589741"
-val releaseVersion = System.getenv("RELEASE_VERSION") ?: "0.7.23"
+val releaseVersion = System.getenv("RELEASE_VERSION") ?: "0.7.24"
 val releaseCode = System.getenv("RELEASE_CODE")?.let { raw ->
     raw.toIntOrNull() ?: error("RELEASE_CODE must be a positive integer.")
-} ?: 39
+} ?: 40
 require(releaseCode > 0) { "RELEASE_CODE must be a positive integer." }
 require(Regex("[0-9]+\\.[0-9]+\\.[0-9]+").matches(releaseVersion)) {
     "RELEASE_VERSION must use the format major.minor.patch."
@@ -69,6 +71,7 @@ kotlin {
             implementation(libs.androidx.activity.compose)
             implementation(libs.google.mobile.ads)
             implementation(libs.google.ump)
+            implementation(libs.startio.sdk)
             implementation(libs.firebase.messaging)
             implementation(libs.media3.exoplayer)
             implementation(libs.media3.hls)
@@ -117,6 +120,9 @@ val verifyAdMobReleaseConfig = tasks.register("verifyAdMobReleaseConfig") {
         check(admobBannerIdPattern.matches(admobReleaseCatalogBannerId)) {
             "Set ADMOB_CATALOG_BANNER_ID to a valid AdMob banner unit ID before building Android release."
         }
+        check(startIoAppIdPattern.matches(startIoAppId)) {
+            "Set STARTIO_APP_ID to the numeric Start.io app ID before building Android release."
+        }
     }
 }
 
@@ -156,12 +162,15 @@ android {
             manifestPlaceholders["ADMOB_APP_ID"] = admobTestAppId
             resValue("string", "admob_home_banner_id", admobTestBannerId)
             resValue("string", "admob_catalog_banner_id", admobTestBannerId)
+            // Start.io has no public test app; debug builds use the real ID with test ads, or stay off.
+            resValue("string", "startio_app_id", startIoAppId.takeIf { startIoAppIdPattern.matches(it) }.orEmpty())
         }
         getByName("release") {
             signingConfig = signingConfigs.getByName("release")
             manifestPlaceholders["ADMOB_APP_ID"] = admobReleaseAppId
             resValue("string", "admob_home_banner_id", admobReleaseHomeBannerId)
             resValue("string", "admob_catalog_banner_id", admobReleaseCatalogBannerId)
+            resValue("string", "startio_app_id", startIoAppId)
         }
     }
     compileOptions {

@@ -8,11 +8,11 @@
 
 ![Android](https://img.shields.io/badge/Android-7C3AED?style=for-the-badge&logo=android&logoColor=white&labelColor=0B0614)
 ![Windows](https://img.shields.io/badge/Windows-7C3AED?style=for-the-badge&logo=windows&logoColor=white&labelColor=0B0614)
-![Versão](https://img.shields.io/badge/vers%C3%A3o-0.7.23-A78BFA?style=for-the-badge&labelColor=0B0614)
+![Versão](https://img.shields.io/badge/vers%C3%A3o-0.7.24-A78BFA?style=for-the-badge&labelColor=0B0614)
 ![Kotlin](https://img.shields.io/badge/Kotlin-Compose-7C3AED?style=for-the-badge&logo=kotlin&logoColor=white&labelColor=0B0614)
 
-[![Baixar para Android](https://img.shields.io/badge/BAIXAR-APK%20Android-7C3AED?style=for-the-badge&logo=android&logoColor=white&labelColor=0B0614)](https://github.com/gsgamebg/spaceanime/releases/download/v0.7.23/SpaceAnime-0.7.23-39-android.apk)
-[![Baixar para Windows](https://img.shields.io/badge/BAIXAR-ZIP%20Windows-7C3AED?style=for-the-badge&logo=windows&logoColor=white&labelColor=0B0614)](https://github.com/gsgamebg/spaceanime/releases/download/v0.7.23/SpaceAnime-0.7.23-39-windows.zip)
+[![Baixar para Android](https://img.shields.io/badge/BAIXAR-APK%20Android-7C3AED?style=for-the-badge&logo=android&logoColor=white&labelColor=0B0614)](https://github.com/gsgamebg/spaceanime/releases/download/v0.7.24/SpaceAnime-0.7.24-40-android.apk)
+[![Baixar para Windows](https://img.shields.io/badge/BAIXAR-ZIP%20Windows-7C3AED?style=for-the-badge&logo=windows&logoColor=white&labelColor=0B0614)](https://github.com/gsgamebg/spaceanime/releases/download/v0.7.24/SpaceAnime-0.7.24-40-windows.zip)
 
 </div>
 

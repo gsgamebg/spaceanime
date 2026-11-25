@@ -14,6 +14,7 @@ google-services = "4.6.0"
 firebase-bom = "35.2.0"
 google-mobile-ads = "25.5.0"
 google-ump = "4.0.0"
+startio = "5.2.0"
 
 [libraries]
 androidx-activity-compose = { module = "androidx.activity:activity-compose", version.ref = "activity" }
@@ -32,6 +33,7 @@ firebase-bom = { module = "com.google.firebase:firebase-bom", version.ref = "fir
 firebase-messaging = { module = "com.google.firebase:firebase-messaging" }
 google-mobile-ads = { module = "com.google.android.gms:play-services-ads", version.ref = "google-mobile-ads" }
 google-ump = { module = "com.google.android.ump:user-messaging-platform", version.ref = "google-ump" }
+startio-sdk = { module = "com.startapp:inapp-sdk", version.ref = "startio" }
 
 [plugins]
 kotlin-multiplatform = { id = "org.jetbrains.kotlin.multiplatform", version.ref = "kotlin" }

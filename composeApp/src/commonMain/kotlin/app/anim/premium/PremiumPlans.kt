@@ -29,15 +29,29 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.border
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.window.Dialog
+import app.anim.ads.AdsController
+import app.anim.ads.LocalAdsController
+import app.anim.auth.AccountState
 import app.anim.design.*
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import org.jetbrains.compose.resources.ExperimentalResourceApi
+import org.jetbrains.compose.resources.decodeToImageBitmap
 import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.sin
 
 /**
- * VIP plans (pre-launch). Payments are not live yet, so nothing here is sold or unlocked:
- * the call to action only joins a waiting list. Never list benefits the app cannot deliver
- * (e.g. ad removal) until entitlements exist — see PremiumPlansTest.
+ * VIP plans, paid once by Pix for 30 days. List only benefits the app actually delivers
+ * (see PremiumPlansTest): no ads, the VIP badge, the avatar frame and highlighted comments.
  */
 internal data class Plan(
     val id: String,
@@ -50,14 +64,15 @@ internal data class Plan(
 )
 
 internal val plans = listOf(
-    Plan("ouro", "Ouro", "10", SpaceGold, "Seu nome brilha na comunidade", listOf("Símbolo VIP no perfil", "Moldura dourada no avatar")),
+    Plan("ouro", "Ouro", "10", SpaceGold, "Sem anúncios e seu nome brilhando", listOf(SEM_ANUNCIOS, "Selo VIP Ouro no perfil e nos comentários", "Moldura dourada no avatar")),
     Plan(
         "ametista", "Ametista", "30", SpaceAmethyst, "A experiência completa do SpaceAnime",
-        listOf("Banner de fundo exclusivo", "Nome de usuário colorido", "Privilégios no servidor do Discord", "Símbolo VIP no perfil", "Comentários em destaque", "Suporte 24 horas"),
+        listOf(SEM_ANUNCIOS, "Selo VIP Ametista no perfil e nos comentários", "Moldura ametista animada no avatar", "Comentários em destaque"),
         featured = true,
     ),
-    Plan("platina", "Platina", "20", SpacePlatinum, "Visual exclusivo para o seu perfil", listOf("Banner de fundo exclusivo", "Nome de usuário colorido", "Privilégios no servidor do Discord", "Símbolo VIP no perfil")),
+    Plan("platina", "Platina", "20", SpacePlatinum, "Sem anúncios com visual exclusivo", listOf(SEM_ANUNCIOS, "Selo VIP Platina no perfil e nos comentários", "Moldura platina no avatar")),
 )
+internal const val SEM_ANUNCIOS = "Sem anúncios"
 
 @Composable private fun motion() = LocalSpaceMotionEnabled.current
 
@@ -145,7 +160,7 @@ private fun DrawScope.sparkle(center: Offset, radius: Float, color: Color) {
     }
 }
 
-@Composable private fun VipPlanCard(plan: Plan, joined: Boolean, onJoin: () -> Unit, modifier: Modifier = Modifier) {
+@Composable private fun VipPlanCard(plan: Plan, current: Boolean, loading: Boolean, onSubscribe: () -> Unit, modifier: Modifier = Modifier) {
     val interaction = remember { MutableInteractionSource() }
     val hovered by interaction.collectIsHoveredAsState()
     val lift by animateFloatAsState(if (hovered && motion()) 1.03f else 1f, tween(220), label = "lift")
@@ -194,59 +209,189 @@ private fun DrawScope.sparkle(center: Offset, radius: Float, color: Color) {
         Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
             Text("R$", style = MaterialTheme.typography.titleMedium, color = Color(0xFFE9E3F5))
             Text(plan.price, style = MaterialTheme.typography.displaySmall, fontWeight = FontWeight.ExtraBold, color = Color.White)
-            Text("/mês", style = MaterialTheme.typography.bodyMedium, color = Color(0xFFB8AECB), modifier = Modifier.padding(bottom = 6.dp))
+            Text("/30 dias", style = MaterialTheme.typography.bodyMedium, color = Color(0xFFB8AECB), modifier = Modifier.padding(bottom = 6.dp))
         }
         OutlinedButton(
-            onClick = onJoin,
-            enabled = !joined,
+            onClick = onSubscribe,
+            enabled = !loading,
             shape = CircleShape,
-            border = BorderStroke(1.5.dp, if (joined) SpaceLagoon.copy(alpha = 0.4f) else SpaceLagoon),
+            border = BorderStroke(1.5.dp, SpaceLagoon),
             colors = ButtonDefaults.outlinedButtonColors(containerColor = if (plan.featured) SpaceLagoon.copy(alpha = 0.14f) else Color.Transparent, contentColor = Color.White),
-            modifier = Modifier.fillMaxWidth().height(48.dp).clip(CircleShape).then(if (joined) Modifier else Modifier.shimmer({ sweep })),
+            modifier = Modifier.fillMaxWidth().height(48.dp).clip(CircleShape).then(if (loading) Modifier else Modifier.shimmer({ sweep })),
         ) {
-            Text(if (joined) "Você está na lista ✓" else "Quero o ${plan.name}", fontWeight = FontWeight.SemiBold)
+            if (loading) CircularProgressIndicator(Modifier.size(18.dp), color = Color.White, strokeWidth = 2.dp)
+            else Text(if (current) "Renovar +30 dias com Pix" else "Assinar com Pix", fontWeight = FontWeight.SemiBold)
         }
     }
 }
 
-/** Dedicated VIP page: wordmark, three plans (featured in the middle on wide screens) and the waiting list. */
-@Composable fun VipScreen() {
-    var joined by remember { mutableStateOf<String?>(null) }
+/** Dedicated VIP page: wordmark, current status, three plans paid by Pix and the rewarded ad-free pass. */
+@Composable fun VipScreen(account: AccountState) {
+    val scope = rememberCoroutineScope()
+    val ads = LocalAdsController.current
+    val vip = account.vip
+    var busy by remember { mutableStateOf<String?>(null) }
+    var error by remember { mutableStateOf<String?>(null) }
+    var charge by remember { mutableStateOf<PixCharge?>(null) }
+    LaunchedEffect(account.isAuthenticated) { account.refreshVip() }
+    fun subscribe(plan: Plan) {
+        if (busy != null) return
+        error = null
+        busy = plan.id
+        scope.launch {
+            try { charge = account.createPix(plan.id) }
+            catch (e: VipException) { error = e.message }
+            catch (e: kotlinx.coroutines.CancellationException) { throw e }
+            catch (_: Exception) { error = "Não foi possível gerar o Pix. Tente novamente." }
+            finally { busy = null }
+        }
+    }
     Box(Modifier.fillMaxWidth().clip(RoundedCornerShape(28.dp)).background(SpaceVoid)) {
         VipBackdrop(Modifier.matchParentSize())
         BoxWithConstraints(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 28.dp)) {
             val wide = maxWidth >= 860.dp
             Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(18.dp)) {
                 VipWordmark()
+                if (vip.active) {
+                    Row(
+                        Modifier.spaceGlass(RoundedCornerShape(16.dp)).padding(horizontal = 18.dp, vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    ) {
+                        VipBadge(vip.plan)
+                        Text("Seu VIP ${vipPlanName(vip.plan)} está ativo até ${vip.expiresLabel}. Sem anúncios até lá.", color = Color.White, style = MaterialTheme.typography.bodyMedium)
+                    }
+                } else {
+                    Text(
+                        "Apoie o SpaceAnime, fique sem anúncios e ganhe destaque no seu perfil.",
+                        style = MaterialTheme.typography.titleMedium, color = Color(0xFFE9E3F5), textAlign = TextAlign.Center,
+                    )
+                }
                 Text(
-                    "Apoie o SpaceAnime e ganhe destaque na comunidade.",
-                    style = MaterialTheme.typography.titleMedium, color = Color(0xFFE9E3F5), textAlign = TextAlign.Center,
-                )
-                Text(
-                    "As assinaturas abrem em breve. Por enquanto nenhuma cobrança é feita: escolha um plano para entrar na lista de espera.",
+                    "Pagamento único via Pix: 30 dias de VIP, sem renovação automática. Pagar de novo soma mais 30 dias.",
                     style = MaterialTheme.typography.bodySmall, color = Color(0xFFB8AECB), textAlign = TextAlign.Center,
                     modifier = Modifier.widthIn(max = 560.dp),
                 )
+                error?.let {
+                    Text(it, color = Color(0xFFFCA5A5), style = MaterialTheme.typography.bodyMedium, textAlign = TextAlign.Center,
+                        modifier = Modifier.spaceGlass(RoundedCornerShape(14.dp)).padding(12.dp).widthIn(max = 560.dp))
+                }
                 Spacer(Modifier.height(6.dp))
                 val ordered = if (wide) plans else plans.sortedByDescending { it.featured }
+                val card: @Composable (Plan, Modifier) -> Unit = { plan, modifier ->
+                    VipPlanCard(plan, current = vip.active && vip.plan == plan.id, loading = busy == plan.id, onSubscribe = { subscribe(plan) }, modifier = modifier)
+                }
                 if (wide) {
                     Row(Modifier.fillMaxWidth().widthIn(max = 1080.dp), horizontalArrangement = Arrangement.spacedBy(20.dp), verticalAlignment = Alignment.CenterVertically) {
-                        ordered.forEach { plan ->
-                            VipPlanCard(plan, joined == plan.id, { joined = plan.id }, Modifier.weight(if (plan.featured) 1.15f else 1f))
-                        }
+                        ordered.forEach { plan -> card(plan, Modifier.weight(if (plan.featured) 1.15f else 1f)) }
                     }
                 } else {
                     Column(Modifier.fillMaxWidth().widthIn(max = 480.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                        ordered.forEach { plan -> VipPlanCard(plan, joined == plan.id, { joined = plan.id }, Modifier.fillMaxWidth()) }
+                        ordered.forEach { plan -> card(plan, Modifier.fillMaxWidth()) }
                     }
                 }
-                AnimatedVisibility(joined != null, enter = fadeIn() + expandVertically()) {
-                    val name = plans.firstOrNull { it.id == joined }?.name.orEmpty()
-                    Text(
-                        "Pronto! Você está na lista de espera do plano $name. Avisaremos aqui no app quando as assinaturas abrirem.",
-                        modifier = Modifier.spaceGlass(RoundedCornerShape(16.dp)).padding(16.dp).widthIn(max = 560.dp),
-                        color = Color.White, textAlign = TextAlign.Center, style = MaterialTheme.typography.bodyMedium,
-                    )
+                if (ads != null && !vip.active) RewardedPassCard(ads)
+            }
+        }
+    }
+    charge?.let { current ->
+        PixDialog(current, account, onClose = { charge = null })
+    }
+}
+
+/** "Watch a video, no ads for 2 h" — only when the rewarded format is enabled remotely and loaded. */
+@Composable private fun RewardedPassCard(ads: AdsController) {
+    var tick by remember { mutableStateOf(0) }
+    LaunchedEffect(Unit) { while (true) { delay(30_000); tick++ } }
+    val left = remember(tick, ads.adFreeMinutesLeft()) { ads.adFreeMinutesLeft() }
+    if (left <= 0 && !ads.rewardedReady) return
+    Column(
+        Modifier.widthIn(max = 560.dp).fillMaxWidth().spaceGlass(RoundedCornerShape(18.dp)).padding(18.dp),
+        horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        if (left > 0) {
+            Text("Passe sem anúncios ativo", color = Color.White, fontWeight = FontWeight.SemiBold)
+            Text("Mais ${if (left >= 60) "${left / 60} h ${left % 60} min" else "$left min"} sem anúncios.", color = Color(0xFFC4B5FD), style = MaterialTheme.typography.bodySmall)
+        } else {
+            val hours = ads.rewardedPassMinutes / 60.0
+            val label = if (ads.rewardedPassMinutes % 60 == 0) "${ads.rewardedPassMinutes / 60} h" else "${ads.rewardedPassMinutes} min"
+            Text("Sem dinheiro agora? Assista a um vídeo e fique $label sem anúncios.", color = Color.White, textAlign = TextAlign.Center)
+            Button(
+                onClick = { ads.showRewarded() },
+                shape = CircleShape,
+                colors = ButtonDefaults.buttonColors(containerColor = SpaceAmethyst, contentColor = Color.White),
+            ) { Text(if (hours >= 1) "Assistir vídeo e ganhar passe" else "Assistir vídeo") }
+        }
+    }
+}
+
+/** Pix checkout: QR code, copy-and-paste code, Mercado Pago link and automatic confirmation. */
+@OptIn(ExperimentalResourceApi::class)
+@Composable private fun PixDialog(charge: PixCharge, account: AccountState, onClose: () -> Unit) {
+    val clipboard = LocalClipboardManager.current
+    val uri = LocalUriHandler.current
+    var state by remember(charge.orderId) { mutableStateOf(PixOrderState.Pending) }
+    var copied by remember(charge.orderId) { mutableStateOf(false) }
+    val qr = remember(charge.orderId) { runCatching { charge.qrPng.decodeToImageBitmap() }.getOrNull() }
+    LaunchedEffect(charge.orderId) {
+        // Up to ~35 min (the Pix expires in 30); the backend also asks Mercado Pago on each check.
+        repeat(420) {
+            delay(5_000)
+            val latest = try { account.pixOrderState(charge.orderId) }
+                catch (e: kotlinx.coroutines.CancellationException) { throw e }
+                catch (_: Exception) { PixOrderState.Pending }
+            if (latest != PixOrderState.Pending) { state = latest; return@LaunchedEffect }
+        }
+        state = PixOrderState.Expired
+    }
+    LaunchedEffect(copied) { if (copied) { delay(2_500); copied = false } }
+    Dialog(onDismissRequest = onClose) {
+        Column(
+            Modifier.widthIn(max = 420.dp).clip(RoundedCornerShape(26.dp))
+                .background(Brush.verticalGradient(listOf(Color(0xFF1A1030), Color(0xFF120A22), Color(0xFF3B1361))))
+                .border(1.dp, SpaceAmethyst.copy(alpha = 0.5f), RoundedCornerShape(26.dp))
+                .verticalScroll(rememberScrollState())
+                .padding(22.dp),
+            horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(14.dp),
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                VipBadge(charge.plan)
+                Text("VIP ${vipPlanName(charge.plan)} · R$ ${charge.amountCents / 100},${(charge.amountCents % 100).toString().padStart(2, '0')}",
+                    color = Color.White, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            }
+            when (state) {
+                PixOrderState.Paid -> {
+                    Text("Pagamento confirmado!", color = Color(0xFF86EFAC), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+                    Text("Seu VIP ${vipPlanName(charge.plan)} já está ativo por 30 dias. Os anúncios somem na hora.", color = Color(0xFFE9E3F5), textAlign = TextAlign.Center)
+                    Button(onClick = onClose, shape = CircleShape, colors = ButtonDefaults.buttonColors(containerColor = SpaceAmethyst)) { Text("Fechar") }
+                }
+                PixOrderState.Expired, PixOrderState.Failed -> {
+                    Text(if (state == PixOrderState.Expired) "Este Pix expirou." else "O pagamento não foi aprovado.", color = Color(0xFFFCA5A5), style = MaterialTheme.typography.titleMedium)
+                    Text("Feche e gere um novo Pix para tentar de novo. Nada foi cobrado.", color = Color(0xFFE9E3F5), textAlign = TextAlign.Center)
+                    OutlinedButton(onClick = onClose, shape = CircleShape) { Text("Fechar", color = Color.White) }
+                }
+                PixOrderState.Pending -> {
+                    Text("Abra o app do seu banco, escolha Pix e escaneie o código ou use o Copia e Cola.", color = Color(0xFFE9E3F5), textAlign = TextAlign.Center, style = MaterialTheme.typography.bodyMedium)
+                    Box(Modifier.size(224.dp).clip(RoundedCornerShape(16.dp)).background(Color.White).padding(10.dp), contentAlignment = Alignment.Center) {
+                        if (qr != null) Image(qr, "QR Code Pix", Modifier.fillMaxSize())
+                        else Text("Use o código abaixo", color = Color.Black)
+                    }
+                    Button(
+                        onClick = { clipboard.setText(AnnotatedString(charge.qrCode)); copied = true },
+                        modifier = Modifier.fillMaxWidth().height(48.dp), shape = CircleShape,
+                        colors = ButtonDefaults.buttonColors(containerColor = SpaceAmethyst, contentColor = Color.White),
+                    ) { Text(if (copied) "Código copiado ✓" else "Copiar código Pix", fontWeight = FontWeight.SemiBold) }
+                    charge.ticketUrl?.let { link ->
+                        OutlinedButton(
+                            onClick = { runCatching { uri.openUri(link) } },
+                            modifier = Modifier.fillMaxWidth().height(46.dp), shape = CircleShape,
+                            border = BorderStroke(1.dp, SpaceLagoon),
+                        ) { Text("Abrir link de pagamento", color = Color.White) }
+                    }
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        CircularProgressIndicator(Modifier.size(16.dp), color = SpaceLagoon, strokeWidth = 2.dp)
+                        Text("Aguardando o pagamento. O VIP é liberado automaticamente.", color = Color(0xFFC4B5FD), style = MaterialTheme.typography.bodySmall)
+                    }
+                    TextButton(onClick = onClose) { Text("Fechar (o VIP ainda é liberado se você pagar)", color = Color(0xFFB8AECB), style = MaterialTheme.typography.bodySmall, textAlign = TextAlign.Center) }
                 }
             }
         }

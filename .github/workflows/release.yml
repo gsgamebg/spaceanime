@@ -49,6 +49,7 @@ jobs:
           ADMOB_APP_ID: ${{ secrets.ADMOB_APP_ID }}
           ADMOB_HOME_BANNER_ID: ${{ secrets.ADMOB_HOME_BANNER_ID }}
           ADMOB_CATALOG_BANNER_ID: ${{ secrets.ADMOB_CATALOG_BANNER_ID }}
+          STARTIO_APP_ID: ${{ secrets.STARTIO_APP_ID }}
         run: |
           # Secrets pasted from a file often carry a trailing newline, which breaks the password check.
           foreach ($name in 'SPACEANIME_KEYSTORE_PASSWORD', 'SPACEANIME_KEY_ALIAS', 'SPACEANIME_KEY_PASSWORD') {

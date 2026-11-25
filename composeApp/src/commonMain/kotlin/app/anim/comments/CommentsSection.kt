@@ -18,6 +18,8 @@ import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable fun CommentsSection(anime: AnimeResult, author: String, store: CommentsStore) {
+    // Comments are stored per profile, so they are all by this user: VIP styling applies to each one.
+    val vipPlan = app.anim.premium.LocalVipPlan.current
     val state by store.state.collectAsState()
     val scope = rememberCoroutineScope()
     var draft by remember(anime) { mutableStateOf("") }
@@ -148,16 +150,19 @@ import kotlinx.coroutines.launch
                 var revealed by remember { mutableStateOf(false) }
                 Surface(
                     shape = RoundedCornerShape(16.dp),
-                    color = Color(0xFF120B20),
-                    border = BorderStroke(1.dp, Color(0x22A855F7)),
+                    color = if (vipPlan == "ametista") Color(0xFF1E1236) else Color(0xFF120B20),
+                    border = BorderStroke(if (vipPlan == "ametista") 1.5.dp else 1.dp, if (vipPlan != null) app.anim.premium.vipColor(vipPlan).copy(alpha = 0.55f) else Color(0x22A855F7)),
                     modifier = Modifier.fillMaxWidth(),
                 ) {
                     Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         // Avatar + autor + data
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                            ProfileAvatar(comment.author, comment.author.length % 4, size = 36.dp)
+                            app.anim.premium.VipFrame(vipPlan, 36.dp) { ProfileAvatar(comment.author, comment.author.length % 4, size = 36.dp) }
                             Column(Modifier.weight(1f)) {
-                                Text(comment.author, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, color = Color(0xFFF8FAFC))
+                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    Text(comment.author, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, color = if (vipPlan != null) app.anim.premium.vipColor(vipPlan) else Color(0xFFF8FAFC))
+                                    if (vipPlan != null) app.anim.premium.VipBadge(vipPlan)
+                                }
                                 Text(discoveryTime(comment.createdAt) + " · local", style = MaterialTheme.typography.bodySmall, color = Color(0xFF94A3B8))
                             }
                             if (comment.spoiler) SpaceBadge("SPOILER", color = Color(0xFFEF4444).copy(alpha = .8f))
