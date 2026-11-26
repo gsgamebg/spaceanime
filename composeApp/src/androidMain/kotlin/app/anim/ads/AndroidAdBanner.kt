@@ -17,7 +17,10 @@ import androidx.compose.ui.viewinterop.AndroidView
 import com.google.android.gms.ads.AdRequest
 import com.google.android.gms.ads.AdSize
 import com.google.android.gms.ads.AdView
+import android.util.Log
+import android.view.View
 import com.startapp.sdk.ads.banner.Banner
+import com.startapp.sdk.ads.banner.BannerListener
 import com.startapp.sdk.adsbase.Ad
 import com.startapp.sdk.adsbase.StartAppAd
 import com.startapp.sdk.adsbase.StartAppSDK
@@ -52,6 +55,19 @@ internal class AndroidAdsRuntime private constructor(context: Context) {
         private set
     var startIoReady by mutableStateOf(false)
         private set
+
+    private val lastReported = HashMap<String, Long>()
+
+    /** Logs locally and reports to the backend; the same result is sent at most once per 10 minutes. */
+    fun report(provider: AdProvider, format: String, event: String, reason: String? = null) {
+        val name = if (provider == AdProvider.StartIo) "startio" else "admob"
+        Log.i(TAG, "$name $format $event ${reason.orEmpty()}")
+        val key = "$name|$format|$event"
+        val now = System.currentTimeMillis()
+        if (now - (lastReported[key] ?: 0L) < REPORT_COOLDOWN_MS) return
+        lastReported[key] = now
+        scope.launch { try { client.report(name, format, event, reason) } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (_: Exception) {} }
+    }
 
     fun start() {
         if (started) return
@@ -90,8 +106,8 @@ internal class AndroidAdsRuntime private constructor(context: Context) {
         val ad = StartAppAd(host)
         interstitial = ad
         ad.loadAd(StartAppAd.AdMode.AUTOMATIC, object : AdEventListener {
-            override fun onReceiveAd(ad: Ad) = Unit
-            override fun onFailedToReceiveAd(ad: Ad?) { scope.launch { delay(RETRY_MS); if (interstitial === ad) interstitial = null } }
+            override fun onReceiveAd(ad: Ad) = report(AdProvider.StartIo, "interstitial", "loaded")
+            override fun onFailedToReceiveAd(ad: Ad?) { report(AdProvider.StartIo, "interstitial", "failed", "no fill"); scope.launch { delay(RETRY_MS); if (interstitial === ad) interstitial = null } }
         })
     }
 
@@ -101,8 +117,8 @@ internal class AndroidAdsRuntime private constructor(context: Context) {
         rewardedReady = false
         ad.setVideoListener { grantPass() }
         ad.loadAd(StartAppAd.AdMode.REWARDED_VIDEO, object : AdEventListener {
-            override fun onReceiveAd(ad: Ad) { rewardedReady = true }
-            override fun onFailedToReceiveAd(ad: Ad?) { rewardedReady = false; scope.launch { delay(RETRY_MS); if (rewardedAd === ad) rewardedAd = null } }
+            override fun onReceiveAd(ad: Ad) { report(AdProvider.StartIo, "rewarded", "loaded"); rewardedReady = true }
+            override fun onFailedToReceiveAd(ad: Ad?) { report(AdProvider.StartIo, "rewarded", "failed", "no fill"); rewardedReady = false; scope.launch { delay(RETRY_MS); if (rewardedAd === ad) rewardedAd = null } }
         })
     }
 
@@ -130,6 +146,7 @@ internal class AndroidAdsRuntime private constructor(context: Context) {
 
     private fun grantPass() {
         val minutes = configuration?.rewardedPassMinutes ?: 120
+        report(AdProvider.StartIo, "rewarded", "rewarded")
         val until = System.currentTimeMillis() + minutes * 60_000L
         adFreeUntil = until
         preferences.edit().putLong(KEY_PASS_UNTIL, until).apply()
@@ -174,7 +191,7 @@ actual fun AdBannerSlot(placement: AdPlacement) {
     val config = runtime.configuration ?: return
     if (!config.allows(placement)) return
     when (config.provider) {
-        AdProvider.AdMob -> AdMobBanner(placement)
+        AdProvider.AdMob -> AdMobBanner(placement, runtime)
         AdProvider.StartIo -> StartIoBanner(runtime)
     }
 }
@@ -186,11 +203,25 @@ private fun StartIoBanner(runtime: AndroidAdsRuntime) {
     val consent = remember(context.applicationContext) { AndroidAdsConsentRegistry.get(context.applicationContext) }
     LaunchedEffect(activity) { if (consent.refresh(activity).canRequestAds) runtime.prepareStartIo(activity) }
     if (!consent.snapshot.canRequestAds || !runtime.startIoReady) return
-    AndroidView(factory = { Banner(activity) }, modifier = Modifier.fillMaxWidth().height(50.dp))
+    // Collapse the slot when Start.io has no ad (new apps often get no fill until approved), so
+    // there is no empty strip; the reason goes to logcat under "SpaceAds".
+    var loaded by remember { mutableStateOf<Boolean?>(null) }
+    if (loaded == false) return
+    AndroidView(
+        factory = {
+            Banner(activity, object : BannerListener {
+                override fun onReceiveAd(view: View?) { runtime.report(AdProvider.StartIo, "banner", "loaded"); loaded = true }
+                override fun onFailedToReceiveAd(view: View?) { runtime.report(AdProvider.StartIo, "banner", "failed", "no fill"); loaded = false }
+                override fun onImpression(view: View?) { runtime.report(AdProvider.StartIo, "banner", "impression") }
+                override fun onClick(view: View?) = Unit
+            })
+        },
+        modifier = Modifier.fillMaxWidth().height(50.dp),
+    )
 }
 
 @Composable
-private fun AdMobBanner(placement: AdPlacement) {
+private fun AdMobBanner(placement: AdPlacement, runtime: AndroidAdsRuntime) {
     val context = LocalContext.current
     val activity = context.findActivity() ?: return
     val consent = remember(context.applicationContext) {
@@ -215,6 +246,12 @@ private fun AdMobBanner(placement: AdPlacement) {
                     AdView(context).apply {
                         adUnitId = unitId
                         setAdSize(adSize)
+                        adListener = object : com.google.android.gms.ads.AdListener() {
+                            override fun onAdLoaded() = runtime.report(AdProvider.AdMob, "banner", "loaded")
+                            override fun onAdImpression() = runtime.report(AdProvider.AdMob, "banner", "impression")
+                            override fun onAdFailedToLoad(error: com.google.android.gms.ads.LoadAdError) =
+                                runtime.report(AdProvider.AdMob, "banner", "failed", "code ${error.code} ${error.message}")
+                        }
                     }
                 }
                 DisposableEffect(adView) {
@@ -235,9 +272,11 @@ private fun AdMobBanner(placement: AdPlacement) {
     }
 }
 
+private const val TAG = "SpaceAds"
 private const val PREFERENCES_NAME = "spaceanime_ads_v2"
 private const val KEY_CONFIG = "config_json"
 private const val KEY_PASS_UNTIL = "ad_free_until"
 private const val KEY_EPISODES = "episodes_opened"
 private const val CONFIG_REFRESH_INTERVAL_MS = 15 * 60 * 1000L
 private const val RETRY_MS = 60_000L
+private const val REPORT_COOLDOWN_MS = 10 * 60_000L

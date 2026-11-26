@@ -8,6 +8,7 @@ const { createFirebaseSender } = require('./notifications-fcm');
 const { runDailyDigest } = require('./notifications-worker');
 const { createRuntimeConfigStore } = require('./runtime-config-store');
 const { parseTelemetry, clientIp, createTelemetryStore } = require('./telemetry');
+const { parseAdEvent, createRateLimiter, formatAdEvent, formatConfig } = require('./ads-events');
 const { VIP_PLANS, UUID, mpConfigured, createMercadoPago, createVipStore, verifyWebhookSignature, settlePayment } = require('./vip');
 
 const MAX_BODY = 65536;
@@ -45,6 +46,7 @@ function createHandler({
   mercadoPago: mercadoPagoOverride,
   verifyAccount,
 } = {}) {
+  const allowAdEvent = createRateLimiter(60);
   const vipStore = vipStoreOverride || createVipStore(env);
   const mercadoPago = mercadoPagoOverride || createMercadoPago(env);
   const notificationStore = notificationStoreOverride || createNotificationStore(env);
@@ -183,17 +185,31 @@ function createHandler({
       if (req.method === 'GET' && path === '/health') return json(res, 200, { status: 'ok', payments: 'sandbox_only', entitlements: 'disabled' });
       if (req.method === 'GET' && path === '/api/app-config') {
         try {
-          return json(res, 200, await runtimeConfigStore.read());
-        } catch {
+          const config = await runtimeConfigStore.read();
+          console.log(formatConfig(config, 1));
+          return json(res, 200, config);
+        } catch (error) {
+          console.error(`[ads] config v1 unavailable (${error?.message})`);
           return json(res, 503, { error: 'app_config_unavailable' });
         }
       }
       if (req.method === 'GET' && path === '/api/v2/app-config') {
         try {
-          return json(res, 200, await runtimeConfigStore.readV2());
-        } catch {
+          const config = await runtimeConfigStore.readV2();
+          console.log(formatConfig(config, 2));
+          return json(res, 200, config);
+        } catch (error) {
+          console.error(`[ads] config v2 unavailable (${error?.message})`);
           return json(res, 503, { error: 'app_config_unavailable' });
         }
+      }
+      if (req.method === 'POST' && path === '/api/v1/ads/events') {
+        if (!/^application\/json\b/i.test(req.headers['content-type'] || '')) return json(res, 415, { error: 'unsupported_media_type' });
+        if (!allowAdEvent(clientIp(req) || 'unknown')) return json(res, 429, { error: 'rate_limited' });
+        const event = parseAdEvent((await readBody(req)).toString('utf8'));
+        if (!event) return json(res, 400, { error: 'invalid_ad_event' });
+        console.log(formatAdEvent(event));
+        return json(res, 202, { status: 'accepted' });
       }
       if (req.method === 'POST' && path === '/api/vip/create-pix') {
         if (!mpConfigured(env)) return json(res, 503, { error: 'payments_not_configured' });

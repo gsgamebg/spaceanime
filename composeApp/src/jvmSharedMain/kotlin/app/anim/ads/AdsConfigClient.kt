@@ -6,7 +6,9 @@ import kotlinx.coroutines.withContext
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.*
 import okhttp3.OkHttpClient
+import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import java.io.ByteArrayOutputStream
 import java.io.IOException
@@ -30,6 +32,24 @@ internal class AdsConfigClient(
             return@withContext text to parsed
         }
         null
+    }
+
+    /**
+     * Tells the backend how an ad request ended so it shows in the server log (`[ads] event ...`).
+     * Best effort: carries no user or device data, only provider, format, result and app version.
+     */
+    suspend fun report(provider: String, format: String, event: String, reason: String? = null) = withContext(Dispatchers.IO) {
+        val url = (backend + "/api/v1/ads/events").toHttpUrlOrNull() ?: return@withContext
+        if (!url.isHttps || url.host != "spaceanime.onrender.com") return@withContext
+        val body = buildJsonObject {
+            put("schemaVersion", 1)
+            put("provider", provider)
+            put("format", format)
+            put("event", event)
+            put("app_version", app.anim.update.APP_VERSION)
+            reason?.let { put("reason", it.filter { c -> c.isLetterOrDigit() || c in " _.:-" }.take(80).ifBlank { "unknown" }) }
+        }.toString().toRequestBody("application/json".toMediaType())
+        try { client.newCall(Request.Builder().url(url).post(body).build()).execute().close() } catch (_: IOException) {}
     }
 
     private fun get(path: String): String? {
