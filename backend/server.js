@@ -1,17 +1,41 @@
 'use strict';
 const http = require('node:http');
+const fs = require('node:fs');
+const nodePath = require('node:path');
 const crypto = require('node:crypto');
-const Stripe = require('stripe');
 const { loadRelease, manifest } = require('./update-feed');
 const { createNotificationStore } = require('./notifications-store');
 const { createFirebaseSender } = require('./notifications-fcm');
 const { runDailyDigest } = require('./notifications-worker');
 const { createRuntimeConfigStore } = require('./runtime-config-store');
 const { parseTelemetry, clientIp, createTelemetryStore } = require('./telemetry');
+const { permissionsFor, PERMISSIONS, createAdmin } = require('./admin');
 const { parseAdEvent, createRateLimiter, formatAdEvent, formatConfig } = require('./ads-events');
 const { VIP_PLANS, UUID, mpConfigured, createMercadoPago, createVipStore, verifyWebhookSignature, settlePayment } = require('./vip');
 
 const MAX_BODY = 65536;
+// The admin panel is static and served by this same service at /admin/ (same origin, no CORS needed).
+const ADMIN_FILES = Object.freeze({
+  'index.html': 'text/html; charset=utf-8',
+  'app.js': 'text/javascript; charset=utf-8',
+  'config.js': 'text/javascript; charset=utf-8',
+  'style.css': 'text/css; charset=utf-8',
+});
+const ADMIN_DIR = nodePath.join(__dirname, 'admin');
+function serveAdminFile(res, name) {
+  let body;
+  try { body = fs.readFileSync(nodePath.join(ADMIN_DIR, name)); }
+  catch { return json(res, 404, { error: 'not_found' }); }
+  res.writeHead(200, {
+    'Content-Type': ADMIN_FILES[name],
+    'Cache-Control': 'no-cache',
+    'X-Content-Type-Options': 'nosniff',
+    'Referrer-Policy': 'no-referrer',
+    'X-Frame-Options': 'DENY',
+    'Content-Security-Policy': "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self' https://btftbtkbebbkiogsybjn.supabase.co; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
+  });
+  return res.end(body);
+}
 function json(res, status, data) {
   res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' });
   res.end(JSON.stringify(data));
@@ -33,10 +57,7 @@ async function readBody(req) {
 }
 function createHandler({
   env = process.env,
-  stripeFactory = (key) => new Stripe(key),
   verifyUser,
-  authorizeFinancial,
-  persistSandboxEvent,
   notificationStore: notificationStoreOverride,
   runtimeConfigStore: runtimeConfigStoreOverride,
   telemetryStore: telemetryStoreOverride,
@@ -45,7 +66,9 @@ function createHandler({
   vipStore: vipStoreOverride,
   mercadoPago: mercadoPagoOverride,
   verifyAccount,
+  admin: adminOverride,
 } = {}) {
+  const admin = adminOverride || createAdmin(env);
   const allowAdEvent = createRateLimiter(60);
   const vipStore = vipStoreOverride || createVipStore(env);
   const mercadoPago = mercadoPagoOverride || createMercadoPago(env);
@@ -86,33 +109,37 @@ function createHandler({
     if (!user) { json(res, 401, { error: 'unauthorized' }); return null; }
     return user;
   }
+  /** Admin routes: valid Supabase token + second factor + a role holding [permission]; otherwise 401/403. */
+  async function staffAccess(req, res, permission) {
+    const match = /^Bearer ([A-Za-z0-9._~-]{1,8192})$/.exec(req.headers.authorization || '');
+    if (!match) { json(res, 401, { error: 'unauthorized' }); return null; }
+    let me;
+    try { me = await admin.staffMe(match[1]); }
+    catch { json(res, 503, { error: 'admin_unavailable' }); return null; }
+    if (!me) { json(res, 401, { error: 'unauthorized' }); return null; }
+    if (!me.aal2) { json(res, 403, { error: 'mfa_required' }); return null; }
+    const permissions = permissionsFor(me.roles);
+    if (permission ? !permissions.includes(permission) : permissions.length === 0) { json(res, 403, { error: 'forbidden' }); return null; }
+    return { ...me, permissions };
+  }
+  /** CORS for the admin site only: exact origin from ADMIN_ORIGIN, never a wildcard. */
+  function adminCors(req, res) {
+    const origin = req.headers.origin;
+    if (origin && env.ADMIN_ORIGIN && origin === env.ADMIN_ORIGIN) {
+      res.setHeader('Access-Control-Allow-Origin', origin);
+      res.setHeader('Vary', 'Origin');
+      res.setHeader('Access-Control-Allow-Headers', 'Authorization, Content-Type');
+      res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+      res.setHeader('Access-Control-Max-Age', '600');
+      return true;
+    }
+    return false;
+  }
   async function vipStatus(userId) {
     const value = await vipStore.status(userId);
     const active = value?.active === true && Object.hasOwn(VIP_PLANS, value.plan) && typeof value.expires_at === 'string';
     return active ? { active: true, plan: value.plan, expires_at: value.expires_at } : { active: false, plan: null, expires_at: null };
   }
-  const persistEvent = persistSandboxEvent || (async (event) => {
-    if (!urlValid(env.SUPABASE_URL, true) || !/^sb_secret_[A-Za-z0-9_-]+$/.test(env.SUPABASE_SECRET_KEY || '')) throw new Error('event_store_unavailable');
-    const response = await fetch(new URL('/rest/v1/rpc/record_stripe_sandbox_event', env.SUPABASE_URL), {
-      method: 'POST', headers: { apikey: env.SUPABASE_SECRET_KEY, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ p_event_id: event.id, p_event_type: event.type }),
-      signal: AbortSignal.timeout(8000), redirect: 'error',
-    });
-    if (!response.ok) throw new Error('event_store_unavailable');
-    const inserted = await response.json();
-    if (typeof inserted !== 'boolean') throw new Error('event_store_invalid');
-    return inserted;
-  });
-  const canReadFinancial = authorizeFinancial || (async (token) => {
-    if (!urlValid(env.SUPABASE_URL, true) || !env.SUPABASE_PUBLISHABLE_KEY) return false;
-    const res = await fetch(new URL('/rest/v1/rpc/authorize_financial_read', env.SUPABASE_URL), {
-      method: 'POST',
-      headers: { apikey: env.SUPABASE_PUBLISHABLE_KEY, Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-      body: '{}', signal: AbortSignal.timeout(8000), redirect: 'error',
-    });
-    if (!res.ok) throw new Error('authorization_unavailable');
-    return (await res.json()) === true;
-  });
   async function authenticatedNotificationUser(req, res) {
     const match = /^Bearer ([A-Za-z0-9._~-]{1,8192})$/.exec(req.headers.authorization || '');
     if (!match) { json(res, 401, { error: 'unauthorized' }); return null; }
@@ -182,7 +209,29 @@ function createHandler({
   return async (req, res) => {
     try {
       const path = new URL(req.url, 'http://local').pathname;
-      if (req.method === 'GET' && path === '/health') return json(res, 200, { status: 'ok', payments: 'sandbox_only', entitlements: 'disabled' });
+      if (req.method === 'GET' && (path === '/admin' || path.startsWith('/admin/'))) {
+        if (path === '/admin') { res.writeHead(301, { Location: '/admin/' }); return res.end(); }
+        const name = path === '/admin/' ? 'index.html' : path.slice('/admin/'.length);
+        if (!Object.hasOwn(ADMIN_FILES, name)) return json(res, 404, { error: 'not_found' });
+        return serveAdminFile(res, name);
+      }
+      if (path.startsWith('/api/admin/')) {
+        const allowed = adminCors(req, res);
+        if (req.method === 'OPTIONS') { res.writeHead(allowed ? 204 : 403, { 'Cache-Control': 'no-store' }); return res.end(); }
+        if (req.method === 'GET' && path === '/api/admin/me') {
+          const staff = await staffAccess(req, res);
+          if (!staff) return;
+          return json(res, 200, { user_id: staff.userId, roles: staff.roles, permissions: staff.permissions });
+        }
+        if (req.method === 'GET' && path === '/api/admin/audit') {
+          const staff = await staffAccess(req, res, 'staff.audit.read');
+          if (!staff) return;
+          try { return json(res, 200, { items: await admin.auditList(100) }); }
+          catch { return json(res, 503, { error: 'admin_unavailable' }); }
+        }
+        return json(res, 404, { error: 'not_found' });
+      }
+      if (req.method === 'GET' && path === '/health') return json(res, 200, { status: 'ok' });
       if (req.method === 'GET' && path === '/api/app-config') {
         try {
           const config = await runtimeConfigStore.read();
@@ -297,25 +346,6 @@ function createHandler({
         res.writeHead(302, { Location: release.artifacts[match[2]].url, 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' });
         return res.end();
       }
-      if (req.method === 'POST' && path === '/webhooks/stripe') {
-        const body = await readBody(req);
-        const sig = req.headers['stripe-signature'];
-        if (!env.STRIPE_WEBHOOK_SECRET || !sig || !/^(rk|sk)_test_/.test(env.STRIPE_RESTRICTED_KEY || '')) return json(res, 503, { error: 'webhook_not_configured' });
-        const stripe = stripeFactory(env.STRIPE_RESTRICTED_KEY);
-        let event;
-        try { event = stripe.webhooks.constructEvent(body, sig, env.STRIPE_WEBHOOK_SECRET); }
-        catch { return json(res, 400, { error: 'invalid_signature' }); }
-        if (event.livemode !== false || !/^evt_[A-Za-z0-9]{1,120}$/.test(event.id || '') || !/^[a-z][a-z0-9_.]{1,100}$/.test(event.type || '')) return json(res, 400, { error: 'invalid_sandbox_event' });
-        try { await persistEvent(event); }
-        catch { return json(res, 503, { error: 'event_store_unavailable' }); }
-        // The event is durably queued, but fulfillment is not implemented; Stripe must retry.
-        return json(res, 503, { error: 'event_processing_not_enabled' });
-      }
-      if (req.method === 'POST' && path === '/api/billing/checkout') {
-        if (env.CHECKOUT_SANDBOX_ENABLED !== 'true' || !/^(rk|sk)_test_/.test(env.STRIPE_RESTRICTED_KEY || '') || !env.STRIPE_WEBHOOK_SECRET) return json(res, 503, { error: 'sandbox_checkout_disabled' });
-        // Prevent accepting money before an actual fulfillment handler is deployed.
-        return json(res, 503, { error: 'fulfillment_not_implemented' });
-      }
       if (req.method === 'POST' && path === '/api/v1/notifications/devices') {
         const userId = await authenticatedNotificationUser(req, res);
         if (!userId) return;
@@ -405,19 +435,6 @@ function createHandler({
         catch { return json(res, 503, { error: 'notification_store_unavailable' }); }
         return json(res, 200, { status: 'removed' });
       }
-      if (req.method === 'GET' && path === '/api/admin/finance/summary') {
-        const match = /^Bearer ([A-Za-z0-9._~-]{1,8192})$/.exec(req.headers.authorization || '');
-        if (!match) return json(res, 401, { error: 'unauthorized' });
-        let userId, allowed;
-        try { userId = await authenticate(match[1]); if (userId) allowed = await canReadFinancial(match[1]); }
-        catch { return json(res, 503, { error: 'authorization_unavailable' }); }
-        if (!userId) return json(res, 401, { error: 'unauthorized' });
-        if (!allowed) return json(res, 403, { error: 'forbidden' });
-        if (!/^(rk|sk)_test_/.test(env.STRIPE_RESTRICTED_KEY || '')) return json(res, 503, { error: 'stripe_sandbox_not_configured' });
-        const balance = await stripeFactory(env.STRIPE_RESTRICTED_KEY).balance.retrieve();
-        const clean = values => Array.isArray(values) ? values.map(v => ({ currency: v.currency, amount: v.amount })) : [];
-        return json(res, 200, { mode: 'sandbox', available: clean(balance.available), pending: clean(balance.pending) });
-      }
       if (req.method === 'GET' && path === '/api/me') {
         const match = /^Bearer ([A-Za-z0-9._~-]{1,8192})$/.exec(req.headers.authorization || '');
         if (!match) return json(res, 401, { error: 'unauthorized' });
@@ -437,4 +454,4 @@ if (require.main === module) {
   if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error('PORT inválida');
   http.createServer(createHandler()).listen(port, '0.0.0.0', () => console.log('SpaceAnime backend iniciado'));
 }
-module.exports = { createHandler, urlValid };
+module.exports = { createHandler, urlValid, PERMISSIONS };

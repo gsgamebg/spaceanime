@@ -1,3 +1,5 @@
+> Substituído por [PLANO-PAINEL-ADMIN.md](PLANO-PAINEL-ADMIN.md).
+
 # Base para o futuro painel administrativo
 
 O aplicativo atual não possui contas, painel, coleta remota ou backend administrativo. Perfis são locais e não conferem privilégios.

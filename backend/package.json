@@ -2,7 +2,7 @@
   "name": "spaceanime-backend",
   "version": "0.1.0",
   "private": true,
-  "description": "Serviço de preparação para autenticação e pagamentos em sandbox",
+  "description": "API do SpaceAnime: atualizações, notificações, anúncios, VIP por Pix e painel administrativo",
   "type": "commonjs",
   "engines": {
     "node": ">=20"
@@ -13,7 +13,6 @@
   },
   "dependencies": {
     "cheerio": "1.2.0",
-    "firebase-admin": "14.5.1",
-    "stripe": "23.0.0"
+    "firebase-admin": "14.5.1"
   }
 }
