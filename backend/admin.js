@@ -67,6 +67,9 @@ function createAdmin(env = process.env, fetchImpl = fetch) {
     async auditList(limit = 100) {
       return (await rpc('spaceanime_staff_audit_list', { body: { p_limit: limit } })).value || [];
     },
+    async overview() { return (await rpc('spaceanime_admin_overview', {})).value || {}; },
+    async finance(limit = 50) { return (await rpc('spaceanime_admin_finance', { body: { p_limit: limit } })).value || {}; },
+    async adsConfig() { return (await rpc('spaceanime_admin_ads_config', {})).value || {}; },
   };
 }
 

@@ -229,6 +229,46 @@ function createHandler({
           try { return json(res, 200, { items: await admin.auditList(100) }); }
           catch { return json(res, 503, { error: 'admin_unavailable' }); }
         }
+        if (req.method === 'GET' && path === '/api/admin/overview') {
+          const staff = await staffAccess(req, res, 'overview.read');
+          if (!staff) return;
+          try {
+            const data = await admin.overview();
+            // Money and VIP figures only for roles that may see finance; everyone else gets usage numbers.
+            if (!staff.permissions.includes('finance.read')) { delete data.revenue; delete data.vip; delete data.orders; }
+            return json(res, 200, data);
+          } catch { return json(res, 503, { error: 'admin_unavailable' }); }
+        }
+        if (req.method === 'GET' && path === '/api/admin/finance') {
+          const staff = await staffAccess(req, res, 'finance.read');
+          if (!staff) return;
+          try { return json(res, 200, await admin.finance(100)); }
+          catch { return json(res, 503, { error: 'admin_unavailable' }); }
+        }
+        if (req.method === 'GET' && path === '/api/admin/ads') {
+          const staff = await staffAccess(req, res, 'ads.read');
+          if (!staff) return;
+          try { return json(res, 200, { config: await admin.adsConfig() }); }
+          catch { return json(res, 503, { error: 'admin_unavailable' }); }
+        }
+        const recheck = /^\/api\/admin\/finance\/orders\/([0-9a-fA-F-]{36})\/recheck$/.exec(path);
+        if (req.method === 'POST' && recheck) {
+          const staff = await staffAccess(req, res, 'vip.grant');
+          if (!staff) return;
+          if (!UUID.test(recheck[1])) return json(res, 400, { error: 'invalid_order' });
+          if (!mpConfigured(env)) return json(res, 503, { error: 'payments_not_configured' });
+          try {
+            // Ownership is not checked: staff may recheck any order. The order must have a payment attached.
+            const order = (await admin.finance(200)).orders.find(o => o.id === recheck[1]);
+            if (!order || !order.mp_payment_id) return json(res, 404, { error: 'order_not_found' });
+            const result = await settlePayment({ mp: mercadoPago, store: vipStore, paymentId: order.mp_payment_id });
+            await admin.audit(staff.userId, 'finance.recheck_order', 'vip_order', recheck[1], { result: result.status });
+            return json(res, 200, { status: result.status });
+          } catch (error) {
+            console.error(`[admin] recheck order=${recheck[1]} failed (${error?.message})`);
+            return json(res, 502, { error: 'recheck_failed' });
+          }
+        }
         return json(res, 404, { error: 'not_found' });
       }
       if (req.method === 'GET' && path === '/health') return json(res, 200, { status: 'ok' });

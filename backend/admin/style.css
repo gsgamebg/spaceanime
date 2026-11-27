@@ -24,4 +24,11 @@ table { width: 100%; border-collapse: collapse; font-size: .9rem; }
 th, td { text-align: left; padding: 8px; border-bottom: 1px solid var(--line); vertical-align: top; word-break: break-word; }
 .qr { background: #fff; padding: 8px; border-radius: 12px; display: inline-block; }
 .qr img { display: block; width: 200px; height: 200px; }
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin: 8px 0 12px; }
+.tile { display: flex; flex-direction: column; background: #0c0618; border: 1px solid var(--line); border-radius: 14px; padding: 14px; }
+.tile-value { font-size: 1.5rem; font-weight: 700; }
+.tile-label { color: var(--muted); font-size: .85rem; }
+.tile-hint { color: var(--teal); font-size: .8rem; margin-top: 2px; }
+.scroll { overflow-x: auto; }
+button.small { padding: 6px 12px; margin: 0; font-size: .8rem; }
 code { background: #0c0618; padding: 2px 6px; border-radius: 6px; word-break: break-all; }

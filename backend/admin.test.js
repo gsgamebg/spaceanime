@@ -6,6 +6,7 @@ const { createHandler } = require('./server');
 const { PERMISSIONS, permissionsFor, createAdmin } = require('./admin');
 
 const USER = '11111111-2222-4333-8444-555555555555';
+const ORDER = 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee';
 const ORIGIN = 'https://admin.example.test';
 async function withServer(handler, fn) {
   const server = http.createServer(handler);
@@ -26,6 +27,9 @@ function fakeAdmin(audits = []) {
     async staffMe(token) { return people[token] || null; },
     async audit(...args) { audits.push(args); },
     async auditList() { return [{ id: 1, action: 'x' }]; },
+    async overview() { return { users: { total: 4 }, active: { d1: 2 }, vip: { active_total: 1 }, revenue: { month_cents: 1000 }, orders: { open: 0 } }; },
+    async finance() { return { orders: [{ id: ORDER, mp_payment_id: 123, status: 'pending' }], by_status_30d: {} }; },
+    async adsConfig() { return { enabled: true }; },
   };
 }
 const get = (base, path, token) => fetch(`${base}${path}`, { headers: token ? { authorization: `Bearer ${token}` } : {} });
@@ -34,6 +38,9 @@ const get = (base, path, token) => fetch(`${base}${path}`, { headers: token ? { 
 const ADMIN_ROUTES = [
   { path: '/api/admin/me', needs: null },
   { path: '/api/admin/audit', needs: 'staff.audit.read' },
+  { path: '/api/admin/overview', needs: 'overview.read' },
+  { path: '/api/admin/finance', needs: 'finance.read' },
+  { path: '/api/admin/ads', needs: 'ads.read' },
 ];
 
 test('every admin route rejects anonymous, invalid, no-MFA and no-role callers', async () => {
@@ -129,5 +136,34 @@ test('the panel is served at /admin/ with strict headers and nothing else leaks'
       assert.equal((await fetch(`${base}${bad}`)).status, 404, bad);
     }
     assert.equal((await fetch(`${base}/admin/`, { method: 'POST' })).status, 404);
+  });
+});
+
+test('overview hides money and VIP data from roles without finance access', async () => {
+  await withServer(createHandler({ env: {}, admin: fakeAdmin() }), async base => {
+    const support = await (await get(base, '/api/admin/overview', 'support')).json();
+    assert.equal(support.users.total, 4);
+    for (const hidden of ['revenue', 'vip', 'orders']) assert.equal(support[hidden], undefined, `${hidden} must be hidden from support`);
+    const finance = await (await get(base, '/api/admin/overview', 'finance')).json();
+    assert.equal(finance.revenue.month_cents, 1000);
+    assert.equal((await get(base, '/api/admin/finance', 'support')).status, 403);
+  });
+});
+
+test('recheck is finance-only, audited, and asks Mercado Pago before changing anything', async () => {
+  const audits = []; const settled = [];
+  const store = { async confirmPayment(order, payment, cents) { settled.push([order, payment, cents]); return { status: 'paid' }; } };
+  const mp = { async getPayment() { return { id: 123, status: 'approved', external_reference: ORDER, currency_id: 'BRL', payment_method_id: 'pix', transaction_amount: 10 }; } };
+  const env = { MP_ACCESS_TOKEN: 'TEST-0000000000000000-synthetic' };
+  await withServer(createHandler({ env, admin: fakeAdmin(audits), vipStore: store, mercadoPago: mp }), async base => {
+    const post = token => fetch(`${base}/api/admin/finance/orders/${ORDER}/recheck`, { method: 'POST', headers: token ? { authorization: `Bearer ${token}` } : {} });
+    assert.equal((await post()).status, 401);
+    for (const role of ['support', 'moderator']) assert.equal((await post(role)).status, 403, role);
+    assert.equal(settled.length, 0);
+    const r = await post('finance');
+    assert.equal(r.status, 200);
+    assert.equal((await r.json()).status, 'paid');
+    assert.deepEqual(settled[0], [ORDER, 123, 1000]);
+    assert.equal(audits[0][1], 'finance.recheck_order');
   });
 });
