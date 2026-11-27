@@ -23,7 +23,7 @@ function el(tag, props = {}, ...children) {
     else if (value === true) node.setAttribute(name, '');
     else if (value !== false && value != null) node.setAttribute(name, value);
   }
-  for (const child of children.flat()) node.append(child instanceof Node ? child : document.createTextNode(String(child)));
+  for (const child of children.flat()) if (child != null && child !== false) node.append(child instanceof Node ? child : document.createTextNode(String(child)));
   return node;
 }
 function show(...nodes) { root.replaceChildren(...nodes); }
@@ -35,8 +35,21 @@ async function auth(path, { method = 'POST', body, token } = {}) {
     body: body ? JSON.stringify(body) : undefined,
   });
   const data = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(data.msg || data.message || data.error_description || 'Não foi possível concluir.');
+  if (!response.ok) {
+    const error = new Error(data.msg || data.message || data.error_description || `Erro ${response.status}`);
+    error.code = data.error_code || data.code || '';
+    error.status = response.status;
+    throw error;
+  }
   return data;
+}
+/** Plain-language message for an auth failure, keeping the real reason visible for diagnosis. */
+function explain(error, step) {
+  if (error instanceof TypeError) return 'Sem conexão com o servidor de login. Verifique a internet.';
+  if (error.code === 'invalid_credentials' || error.code === 'invalid_login_credentials') return 'E-mail ou senha incorretos.';
+  if (error.code === 'email_not_confirmed') return 'Confirme o seu e-mail antes de entrar (veja a caixa de entrada).';
+  if (error.status === 429) return 'Muitas tentativas. Aguarde alguns minutos.';
+  return `${step}: ${error.message}`;
 }
 async function api(path) {
   const response = await fetch(`${API_URL}${path}`, { headers: { Authorization: `Bearer ${session.access_token}` } });
@@ -74,12 +87,17 @@ function renderLogin(message) {
     event.preventDefault();
     submit.disabled = true; error.textContent = '';
     try {
-      const data = await auth('token?grant_type=password', { body: { email: email.value.trim(), password: password.value } });
+      let data;
+      try { data = await auth('token?grant_type=password', { body: { email: email.value.trim(), password: password.value } }); }
+      catch (e) { error.textContent = explain(e, 'Falha no login'); return; }
       password.value = '';
       saveSession({ access_token: data.access_token, refresh_token: data.refresh_token, user: { id: data.user.id, email: data.user.email }, factors: data.user.factors || [] });
-      await afterPassword();
-    } catch (e) {
-      error.textContent = 'E-mail ou senha incorretos.';
+      try { await afterPassword(); }
+      catch (e) {
+        // The password was accepted; the failure is in the second-factor step, so say so.
+        saveSession(null);
+        error.textContent = `Senha aceita, mas a verificação em duas etapas falhou. ${explain(e, 'Detalhe')}`;
+      }
     } finally { submit.disabled = false; }
   });
   show(form);
@@ -118,8 +136,11 @@ async function renderEnroll() {
   const factor = await auth('factors', { token: session.access_token, body: { factor_type: 'totp', friendly_name: `painel-${Date.now()}` } });
   const code = el('input', { id: 'code', inputmode: 'numeric', autocomplete: 'one-time-code', pattern: '[0-9]{6}', maxlength: '6', required: true });
   const error = el('p', { class: 'error', role: 'alert' });
-  // The QR is an SVG data URI from Supabase; it is only ever used as an <img> source.
-  const qr = String(factor.totp.qr_code).startsWith('data:image/svg+xml') ? el('div', { class: 'qr' }, el('img', { src: factor.totp.qr_code, alt: 'QR Code para o app autenticador' })) : null;
+  // Supabase returns the QR either as a data URI or as raw SVG; either way it is only used as an <img> source.
+  const raw = String(factor.totp.qr_code || '');
+  const qrSource = raw.startsWith('data:image/svg+xml') ? raw
+    : raw.trimStart().startsWith('<svg') ? `data:image/svg+xml;utf-8,${encodeURIComponent(raw)}` : null;
+  const qr = qrSource ? el('div', { class: 'qr' }, el('img', { src: qrSource, alt: 'QR Code para o app autenticador' })) : el('p', {}, 'Não foi possível mostrar o QR Code. Use o código abaixo no app autenticador.');
   const form = el('form', { class: 'card login' },
     el('h1', {}, 'Ativar verificação em duas etapas'),
     el('p', {}, 'Escaneie o QR Code com um app autenticador (Google Authenticator, Authy, 1Password) e digite o código.'),
