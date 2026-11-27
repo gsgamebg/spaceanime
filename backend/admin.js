@@ -70,6 +70,8 @@ function createAdmin(env = process.env, fetchImpl = fetch) {
     async overview() { return (await rpc('spaceanime_admin_overview', {})).value || {}; },
     async finance(limit = 50) { return (await rpc('spaceanime_admin_finance', { body: { p_limit: limit } })).value || {}; },
     async adsConfig() { return (await rpc('spaceanime_admin_ads_config', {})).value || {}; },
+    async versions() { return (await rpc('spaceanime_admin_versions', {})).value || {}; },
+    async sources() { return (await rpc('spaceanime_admin_sources', {})).value || {}; },
   };
 }
 

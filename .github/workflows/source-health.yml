@@ -28,9 +28,27 @@ jobs:
         env:
           ANIM_HEALTH: '1'
           ANIM_HEALTH_REPORT: ${{ runner.temp }}/source-health.md
+          ANIM_HEALTH_JSON: ${{ runner.temp }}/source-health.json
         run: |
           chmod +x gradlew
           ./gradlew :composeApp:desktopTest --tests 'app.anim.sources.SourceHealthProbe' --console=plain
+      - name: Send result to the admin panel
+        if: always()
+        env:
+          SOURCE_HEALTH_SECRET: ${{ secrets.SOURCE_HEALTH_SECRET }}
+          REPORT_JSON: ${{ runner.temp }}/source-health.json
+        run: |
+          if [ -z "$SOURCE_HEALTH_SECRET" ]; then echo "SOURCE_HEALTH_SECRET not set; skipping the panel upload."; exit 0; fi
+          if [ ! -f "$REPORT_JSON" ]; then echo "No JSON report to send."; exit 0; fi
+          # Render's free tier may be asleep: retry for up to ~2 minutes. A failed upload never fails the monitor.
+          for attempt in 1 2 3 4; do
+            code=$(curl -s -o /dev/null -w '%{http_code}' -m 40 -X POST https://spaceanime.onrender.com/api/v1/source-health \
+              -H 'Content-Type: application/json' -H "x-health-secret: $SOURCE_HEALTH_SECRET" --data-binary @"$REPORT_JSON") || code=000
+            echo "upload attempt $attempt -> HTTP $code"
+            [ "$code" = "202" ] && exit 0
+            sleep 20
+          done
+          echo "::warning::Could not send the result to the admin panel."
       - name: Report
         env:
           GH_TOKEN: ${{ github.token }}

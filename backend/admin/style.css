@@ -31,4 +31,10 @@ th, td { text-align: left; padding: 8px; border-bottom: 1px solid var(--line); v
 .tile-hint { color: var(--teal); font-size: .8rem; margin-top: 2px; }
 .scroll { overflow-x: auto; }
 button.small { padding: 6px 12px; margin: 0; font-size: .8rem; }
+.bars { display: grid; gap: 8px; }
+.bar-row { display: grid; grid-template-columns: minmax(120px, 220px) 1fr 40px; gap: 10px; align-items: center; font-size: .9rem; }
+.bar-label { word-break: break-word; }
+.bar-track { background: #0c0618; border: 1px solid var(--line); border-radius: 999px; height: 12px; overflow: hidden; }
+.bar-fill { display: block; height: 100%; background: linear-gradient(90deg, #7c3aed, var(--teal)); }
+.bar-n { text-align: right; color: var(--muted); }
 code { background: #0c0618; padding: 2px 6px; border-radius: 6px; word-break: break-all; }

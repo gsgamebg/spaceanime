@@ -173,9 +173,11 @@ const SECTIONS = [
   { id: 'overview', label: 'Visão geral', needs: 'overview.read' },
   { id: 'finance', label: 'Financeiro', needs: 'finance.read' },
   { id: 'ads', label: 'Anúncios', needs: 'ads.read' },
+  { id: 'versions', label: 'Versões', needs: 'versions.read' },
+  { id: 'sources', label: 'Fontes', needs: 'sources.read' },
   { id: 'audit', label: 'Auditoria', needs: 'staff.audit.read' },
 ];
-const VIEWS = { overview: renderOverview, finance: renderFinance, ads: renderAds, audit: renderAudit };
+const VIEWS = { overview: renderOverview, finance: renderFinance, ads: renderAds, versions: renderVersions, sources: renderSources, audit: renderAudit };
 async function renderPanel() {
   let me;
   try { me = await api('/api/admin/me'); }
@@ -207,7 +209,7 @@ function renderHome(content, me) {
     el('div', { class: 'card' },
       el('h2', {}, 'Seu acesso'),
       el('div', { class: 'chips' }, me.roles.map(role => el('span', { class: 'chip' }, role))),
-      el('p', {}, `${me.permissions.length} permissões ativas. Use o menu acima. Versões, aparelhos e fontes chegam na próxima etapa.`)));
+      el('p', {}, `${me.permissions.length} permissões ativas. Use o menu acima. Controles de edição chegam nas próximas etapas.`)));
 }
 const brl = cents => (cents / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 const num = value => (value ?? 0).toLocaleString('pt-BR');
@@ -285,6 +287,66 @@ async function renderAds(content) {
         row('Vídeo premiado', c.rewarded_enabled ? `Passe de ${c.rewarded_pass_minutes} min` : 'Desligado'),
         row('Última alteração', when(c.updated_at)))),
       el('p', {}, 'Somente leitura por enquanto. O resultado de cada anúncio (carregou, falhou, exibiu) entra na etapa 2, com o app novo.')));
+  } catch (e) { failed(content, e); }
+}
+
+/** Horizontal bar list: label, count and a bar proportional to the largest value. */
+function bars(items, label) {
+  const max = Math.max(1, ...items.map(i => i.n));
+  return el('div', { class: 'bars' }, items.map(i => el('div', { class: 'bar-row' },
+    el('span', { class: 'bar-label' }, label(i)),
+    el('span', { class: 'bar-track' }, el('span', { class: 'bar-fill', style: `width:${Math.round((i.n / max) * 100)}%` })),
+    el('span', { class: 'bar-n' }, num(i.n)))));
+}
+
+async function renderVersions(content) {
+  loading(content);
+  try {
+    const d = await api('/api/admin/versions');
+    const platform = p => (p === 'android' ? 'Android' : p === 'windows' ? 'Windows' : p);
+    const behind = d.by_version.filter(v => v.app_code < d.newest_code).reduce((sum, v) => sum + v.n, 0);
+    const empty = el('p', {}, 'Sem dados ainda.');
+    content.replaceChildren(
+      el('div', { class: 'card' }, el('h2', {}, 'Instalações (últimos 30 dias)'), el('div', { class: 'tiles' },
+        tile('Instalações', num(d.installs_30d)),
+        ...Object.entries(d.by_platform).map(([p, n]) => tile(platform(p), num(n))),
+        tile('Em versão antiga', num(behind), d.newest_code ? `abaixo do código ${d.newest_code}` : '')),
+        el('p', {}, 'Cada instalação conta uma vez, pela última versão que abriu. Só entram aparelhos com o envio de dados de uso ligado.')),
+      el('div', { class: 'card' }, el('h2', {}, 'Por versão'), d.by_version.length ? bars(d.by_version, v => `${v.app_version} · ${platform(v.platform)}`) : empty),
+      el('div', { class: 'card' }, el('h2', {}, 'Aparelhos mais comuns'), d.top_devices.length ? bars(d.top_devices, v => v.device_model) : empty),
+      el('div', { class: 'card' }, el('h2', {}, 'Sistemas'), d.top_os.length ? bars(d.top_os, v => v.os_version) : empty),
+      el('div', { class: 'card' }, el('h2', {}, 'Idiomas'), d.top_locales.length ? bars(d.top_locales, v => v.locale) : empty));
+  } catch (e) { failed(content, e); }
+}
+
+async function renderSources(content) {
+  loading(content);
+  try {
+    const d = await api('/api/admin/sources');
+    if (!d.latest.length) {
+      content.replaceChildren(el('div', { class: 'card' }, el('h2', {}, 'Fontes'),
+        el('p', {}, 'Ainda não chegou nenhum resultado. O monitor roda a cada 6 horas no GitHub e envia o resultado para cá.'),
+        el('p', {}, 'Para ativar o envio, crie o segredo SOURCE_HEALTH_SECRET no GitHub (Actions) e no Render, com o mesmo valor.')));
+      return;
+    }
+    const stats = new Map(d.stats_7d.map(s => [s.name, s]));
+    const down = d.latest.filter(l => !l.ok).length;
+    const rows = d.latest.map(l => {
+      const s = stats.get(l.name);
+      const rate = s && s.total ? `${Math.round((s.ok_count / s.total) * 100)}%` : '—';
+      return el('tr', {}, el('td', {}, l.ok ? '✅' : '❌'), el('td', {}, l.name), el('td', {}, `${num(l.ms)} ms`),
+        el('td', {}, rate), el('td', {}, s ? `${num(s.avg_ms)} ms` : '—'), el('td', {}, l.detail || ''), el('td', {}, when(l.run_at)));
+    });
+    const failures = d.recent_failures.map(f => el('tr', {}, el('td', {}, when(f.run_at)), el('td', {}, f.name), el('td', {}, f.detail || '')));
+    content.replaceChildren(
+      el('div', { class: 'card' }, el('h2', {}, 'Estado atual'),
+        down ? el('p', { class: 'error' }, `${down} de ${d.latest.length} verificações com problema na última rodada.`)
+             : el('p', {}, `Todas as ${d.latest.length} verificações responderam na última rodada.`),
+        el('p', {}, `Última rodada: ${when(d.latest.reduce((a, b) => (a.run_at > b.run_at ? a : b)).run_at)}`)),
+      el('div', { class: 'card scroll' }, el('h2', {}, 'Verificações'),
+        el('table', {}, el('thead', {}, el('tr', {}, ['', 'Verificação', 'Tempo', 'Sucesso 7 d', 'Tempo médio', 'Detalhe', 'Quando'].map(h => el('th', {}, h)))), el('tbody', {}, rows))),
+      failures.length ? el('div', { class: 'card scroll' }, el('h2', {}, 'Falhas recentes'),
+        el('table', {}, el('thead', {}, el('tr', {}, ['Quando', 'Verificação', 'Detalhe'].map(h => el('th', {}, h)))), el('tbody', {}, failures))) : null);
   } catch (e) { failed(content, e); }
 }
 

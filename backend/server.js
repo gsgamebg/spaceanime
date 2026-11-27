@@ -9,6 +9,7 @@ const { createFirebaseSender } = require('./notifications-fcm');
 const { runDailyDigest } = require('./notifications-worker');
 const { createRuntimeConfigStore } = require('./runtime-config-store');
 const { parseTelemetry, clientIp, createTelemetryStore } = require('./telemetry');
+const { parseSourceHealth, healthSecretOk, createSourceHealthStore } = require('./source-health');
 const { permissionsFor, PERMISSIONS, createAdmin } = require('./admin');
 const { parseAdEvent, createRateLimiter, formatAdEvent, formatConfig } = require('./ads-events');
 const { VIP_PLANS, UUID, mpConfigured, createMercadoPago, createVipStore, verifyWebhookSignature, settlePayment } = require('./vip');
@@ -67,7 +68,9 @@ function createHandler({
   mercadoPago: mercadoPagoOverride,
   verifyAccount,
   admin: adminOverride,
+  sourceHealthStore: sourceHealthOverride,
 } = {}) {
+  const sourceHealthStore = sourceHealthOverride || createSourceHealthStore(env);
   const admin = adminOverride || createAdmin(env);
   const allowAdEvent = createRateLimiter(60);
   const vipStore = vipStoreOverride || createVipStore(env);
@@ -251,6 +254,18 @@ function createHandler({
           try { return json(res, 200, { config: await admin.adsConfig() }); }
           catch { return json(res, 503, { error: 'admin_unavailable' }); }
         }
+        if (req.method === 'GET' && path === '/api/admin/versions') {
+          const staff = await staffAccess(req, res, 'versions.read');
+          if (!staff) return;
+          try { return json(res, 200, await admin.versions()); }
+          catch { return json(res, 503, { error: 'admin_unavailable' }); }
+        }
+        if (req.method === 'GET' && path === '/api/admin/sources') {
+          const staff = await staffAccess(req, res, 'sources.read');
+          if (!staff) return;
+          try { return json(res, 200, await admin.sources()); }
+          catch { return json(res, 503, { error: 'admin_unavailable' }); }
+        }
         const recheck = /^\/api\/admin\/finance\/orders\/([0-9a-fA-F-]{36})\/recheck$/.exec(path);
         if (req.method === 'POST' && recheck) {
           const staff = await staffAccess(req, res, 'vip.grant');
@@ -270,6 +285,18 @@ function createHandler({
           }
         }
         return json(res, 404, { error: 'not_found' });
+      }
+      if (req.method === 'POST' && path === '/api/v1/source-health') {
+        // Called by the scheduled GitHub monitor with a shared secret; never by the app or the panel.
+        if (!healthSecretOk(req, env.SOURCE_HEALTH_SECRET)) return json(res, 401, { error: 'unauthorized' });
+        if (!/^application\/json\b/i.test(req.headers['content-type'] || '')) return json(res, 415, { error: 'unsupported_media_type' });
+        const report = parseSourceHealth((await readBody(req)).toString('utf8'));
+        if (!report) return json(res, 400, { error: 'invalid_report' });
+        try { await sourceHealthStore.record(report.checks); }
+        catch { return json(res, 503, { error: 'source_health_unavailable' }); }
+        const failed = report.checks.filter(c => !c.ok);
+        console.log(`[sources] report ok=${report.checks.length - failed.length} failed=${failed.length}${failed.length ? ' (' + failed.map(c => c.name).join(', ') + ')' : ''}`);
+        return json(res, 202, { status: 'accepted' });
       }
       if (req.method === 'GET' && path === '/health') return json(res, 200, { status: 'ok' });
       if (req.method === 'GET' && path === '/api/app-config') {

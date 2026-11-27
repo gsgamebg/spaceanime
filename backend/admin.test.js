@@ -30,6 +30,8 @@ function fakeAdmin(audits = []) {
     async overview() { return { users: { total: 4 }, active: { d1: 2 }, vip: { active_total: 1 }, revenue: { month_cents: 1000 }, orders: { open: 0 } }; },
     async finance() { return { orders: [{ id: ORDER, mp_payment_id: 123, status: 'pending' }], by_status_30d: {} }; },
     async adsConfig() { return { enabled: true }; },
+    async versions() { return { installs_30d: 3, by_version: [] }; },
+    async sources() { return { latest: [], stats_7d: [], recent_failures: [] }; },
   };
 }
 const get = (base, path, token) => fetch(`${base}${path}`, { headers: token ? { authorization: `Bearer ${token}` } : {} });
@@ -41,6 +43,8 @@ const ADMIN_ROUTES = [
   { path: '/api/admin/overview', needs: 'overview.read' },
   { path: '/api/admin/finance', needs: 'finance.read' },
   { path: '/api/admin/ads', needs: 'ads.read' },
+  { path: '/api/admin/versions', needs: 'versions.read' },
+  { path: '/api/admin/sources', needs: 'sources.read' },
 ];
 
 test('every admin route rejects anonymous, invalid, no-MFA and no-role callers', async () => {

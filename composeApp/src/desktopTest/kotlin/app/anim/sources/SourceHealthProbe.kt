@@ -16,7 +16,8 @@ import kotlin.test.fail
  * Live health check of every scraping source (ANIM_HEALTH=1), run on a schedule by
  * .github/workflows/source-health.yml. Each check goes end to end — listing, search, episodes or
  * chapters, and a playable stream or page images — so a layout change fails even when the site is up.
- * Writes a Markdown report to ANIM_HEALTH_REPORT (if set) and fails when any check fails.
+ * Writes a Markdown report to ANIM_HEALTH_REPORT and a JSON report ({"checks":[...]}) to ANIM_HEALTH_JSON
+ * (both optional), and fails when any check fails.
  */
 class SourceHealthProbe {
     private data class Check(val name: String, val ok: Boolean, val detail: String, val ms: Long)
@@ -78,6 +79,12 @@ class SourceHealthProbe {
                 appendLine("| Verificação | Resultado | Tempo | Detalhe |")
                 appendLine("|---|---|---|---|")
                 checks.forEach { appendLine("| ${it.name} | ${if (it.ok) "✅" else "❌"} | ${it.ms} ms | ${it.detail.replace("|", "/")} |") }
+            })
+        }
+        System.getenv("ANIM_HEALTH_JSON")?.takeIf { it.isNotBlank() }?.let { path ->
+            fun esc(text: String) = text.map { c -> when { c == '"' -> "\\\""; c == '\\' -> "\\\\"; c < ' ' -> " "; else -> c.toString() } }.joinToString("")
+            File(path).writeText(checks.joinToString(prefix = "{\"checks\":[", postfix = "]}", separator = ",") {
+                "{\"name\":\"${esc(it.name)}\",\"ok\":${it.ok},\"ms\":${it.ms},\"detail\":\"${esc(it.detail.take(200))}\"}"
             })
         }
         if (failed.isNotEmpty()) fail("Fontes com problema: " + failed.joinToString { it.name })
